@@ -8,7 +8,7 @@ export const TrainingDataViewer: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
 
-  // Função auxiliar para calcular MDC
+  // Função auxiliar para calcular MDC (Máximo Divisor Comum)
   const gcd = (a: number, b: number): number => {
     return b === 0 ? a : gcd(b, a % b);
   };
@@ -108,31 +108,17 @@ export const TrainingDataViewer: React.FC = () => {
       .filter(qtd => qtd > 0);
     
     if (quantities.length === 0) return 36;
-    if (quantities.length === 1) {
-      const qtd = quantities[0];
-      const commonDivisors = [36, 48, 24, 30, 42, 18, 12];
-      for (const divisor of commonDivisors) {
-        if (qtd % divisor === 0) return divisor;
-      }
-      return 36;
-    }
     
     // Calcular MDC de todas as quantidades do grupo
     const mdc = gcdMultiple(quantities);
     
-    // Validar se MDC faz sentido como camadas (entre 6 e 60)
+    // O MDC é o número correto de camadas
+    // Só validar se está dentro de um range razoável (6 a 60 camadas)
     if (mdc >= 6 && mdc <= 60) {
       return mdc;
     }
     
-    // Fallback: buscar divisor comum
-    const commonDivisors = [36, 48, 24, 30, 42, 18, 12];
-    for (const divisor of commonDivisors) {
-      if (quantities.every(qtd => qtd % divisor === 0)) {
-        return divisor;
-      }
-    }
-    
+    // Se MDC estiver fora do range, usar valor padrão
     return 36;
   };
 
@@ -188,7 +174,7 @@ export const TrainingDataViewer: React.FC = () => {
   const filteredData = trainingData.filter(item => {
     if (!filter) return true;
     return Object.values(item).some(val => 
-      val.toString().toLowerCase().includes(filter.toLowerCase())
+      String(val).toLowerCase().includes(filter.toLowerCase())
     );
   });
 

@@ -41,31 +41,17 @@ const detectLayers = (items: any[], currentItem: any): number => {
     .filter(qtd => qtd > 0);
   
   if (quantities.length === 0) return 36;
-  if (quantities.length === 1) {
-    const qtd = quantities[0];
-    const commonDivisors = [36, 48, 24, 30, 42, 18, 12];
-    for (const divisor of commonDivisors) {
-      if (qtd % divisor === 0) return divisor;
-    }
-    return 36;
-  }
   
   // Calcular MDC do grupo referência+cor
   const mdc = gcdMultiple(quantities);
   
-  // Validar MDC
+  // O MDC é o número correto de camadas
+  // Só validar se está dentro de um range razoável (6 a 60 camadas)
   if (mdc >= 6 && mdc <= 60) {
     return mdc;
   }
   
-  // Fallback: buscar divisor comum
-  const commonDivisors = [36, 48, 24, 30, 42, 18, 12];
-  for (const divisor of commonDivisors) {
-    if (quantities.every(qtd => qtd % divisor === 0)) {
-      return divisor;
-    }
-  }
-  
+  // Se MDC estiver fora do range, usar valor padrão
   return 36;
 };
 
