@@ -97,8 +97,8 @@ export const ProductionOptimizer: React.FC = () => {
       // Criar planilha com dados otimizados
       const wsData = optimizedItems.map(item => ({
         'Referência': item.referencia,
-        'Cor': item.cor,
         'Tamanho': item.tamanho,
+        'Cor': item.cor,
         'Quantidade Original': item.qtd,
         'Quantidade Otimizada': item.qtd_otimizada,
         'Diferença': item.diferenca
@@ -306,8 +306,8 @@ export const ProductionOptimizer: React.FC = () => {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Referência</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cor</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tamanho</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cor</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantidade</th>
                   {showOptimized && optimizedItems.length > 0 && (
                     <>
@@ -321,8 +321,8 @@ export const ProductionOptimizer: React.FC = () => {
                 {(showOptimized && optimizedItems.length > 0 ? optimizedItems : items).map((item) => (
                   <tr key={item.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.referencia}</td>
-                    <td className="px-6 py-4 text-sm text-gray-500">{item.cor}</td>
                     <td className="px-6 py-4 text-sm text-gray-500">{item.tamanho}</td>
+                    <td className="px-6 py-4 text-sm text-gray-500">{item.cor}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.qtd}</td>
                     {showOptimized && optimizedItems.length > 0 && (
                       <>

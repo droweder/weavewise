@@ -8,6 +8,20 @@ export const TrainingDataViewer: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
 
+  // Função para ordenar cabeçalhos na ordem desejada: Referência, Tamanho, Cor, Quantidade...
+  const getOrderedHeaders = (item: any) => {
+    const allHeaders = Object.keys(item);
+    const orderedHeaders = ['referencia', 'tamanho', 'cor', 'qtd', 'qtd_otimizada'];
+    
+    // Primeiro, adicionar os cabeçalhos na ordem desejada (se existirem)
+    const result = orderedHeaders.filter(header => allHeaders.includes(header));
+    
+    // Depois, adicionar outros cabeçalhos que não estão na lista ordenada
+    const remainingHeaders = allHeaders.filter(header => !orderedHeaders.includes(header));
+    
+    return [...result, ...remainingHeaders];
+  };
+
   useEffect(() => {
     const fetchTrainingData = async () => {
       try {
@@ -48,7 +62,7 @@ export const TrainingDataViewer: React.FC = () => {
     if (trainingData.length === 0) return;
 
     // Converter para formato CSV
-    const headers = Object.keys(trainingData[0]);
+    const headers = getOrderedHeaders(trainingData[0]);
     const csvContent = [
       headers.join(','),
       ...trainingData.map(item => 
@@ -126,7 +140,7 @@ export const TrainingDataViewer: React.FC = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                {Object.keys(trainingData[0]).map((header) => (
+                {getOrderedHeaders(trainingData[0]).map((header) => (
                   <th 
                     key={header} 
                     className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
@@ -139,9 +153,9 @@ export const TrainingDataViewer: React.FC = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredData.slice(0, 100).map((item, index) => (
                 <tr key={index} className="hover:bg-gray-50">
-                  {Object.values(item).map((value, i) => (
+                  {getOrderedHeaders(item).map((header, i) => (
                     <td key={i} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {String(value)}
+                      {String(item[header])}
                     </td>
                   ))}
                 </tr>

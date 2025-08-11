@@ -81,10 +81,10 @@ export const OptimizationResults: React.FC<OptimizationResultsProps> = ({
                 Referência
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Cor
+                Tamanho
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Tamanho
+                Cor
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Qtd Original
@@ -107,10 +107,10 @@ export const OptimizationResults: React.FC<OptimizationResultsProps> = ({
                   {item.referencia}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {item.cor}
+                  {item.tamanho}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {item.tamanho}
+                  {item.cor}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {item.qtd}
