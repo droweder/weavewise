@@ -22,6 +22,18 @@ export const TrainingDataViewer: React.FC = () => {
     return [...result, ...remainingHeaders];
   };
 
+  // Função para converter nomes de campos para português
+  const getDisplayName = (fieldName: string) => {
+    const fieldMap: Record<string, string> = {
+      'referencia': 'REFERÊNCIA',
+      'tamanho': 'TAMANHO', 
+      'cor': 'COR',
+      'qtd': 'QTD',
+      'qtd_otimizada': 'QTD_OTIMIZADA'
+    };
+    return fieldMap[fieldName] || fieldName.toUpperCase();
+  };
+
   useEffect(() => {
     const fetchTrainingData = async () => {
       try {
@@ -63,8 +75,9 @@ export const TrainingDataViewer: React.FC = () => {
 
     // Converter para formato CSV
     const headers = getOrderedHeaders(trainingData[0]);
+    const displayHeaders = headers.map(header => getDisplayName(header));
     const csvContent = [
-      headers.join(','),
+      displayHeaders.join(','),
       ...trainingData.map(item => 
         headers.map(header => 
           `"${String(item[header]).replace(/"/g, '""')}"`
@@ -145,7 +158,7 @@ export const TrainingDataViewer: React.FC = () => {
                     key={header} 
                     className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                   >
-                    {header}
+                    {getDisplayName(header)}
                   </th>
                 ))}
               </tr>
