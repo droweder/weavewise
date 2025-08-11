@@ -102,86 +102,101 @@ class RealApiService {
 
   private predictOptimalQuantity(item: ProductionItem, modelWeights: any, tolerance: number) {
     // Predição baseada EXCLUSIVAMENTE nos padrões históricos do analista
-    const features = this.extractItemFeatures(item);
-    let optimizedQuantity = item.qtd;
-    let confidence = 0.1; // Base muito baixa, só aumenta com padrões conhecidos
+    let baseQuantity = item.qtd; // Quantidade base para cálculos
+    let totalAdjustmentFactor = 1.0; // Fator de ajuste cumulativo
+    let confidence = 0.0;
     const factors = [];
-    let hasPattern = false;
+    let patternCount = 0;
+    let exactPatterns = [];
 
-    // Aplicar padrões aprendidos por referência (prioridade máxima)
-    if (modelWeights.referencePatterns && modelWeights.referencePatterns[item.referencia]) {
-      const refPattern = modelWeights.referencePatterns[item.referencia];
-      const referenceAdjustment = refPattern.avgAdjustmentRatio;
+    // PRIORIDADE 1: Buscar padrão EXATO (referencia + tamanho + cor)
+    const exactKey = `${item.referencia}-${item.tamanho}-${item.cor}`;
+    if (modelWeights.exactPatterns && modelWeights.exactPatterns[exactKey]) {
+      const exactPattern = modelWeights.exactPatterns[exactKey];
+      // Para padrões exatos, usar diretamente a média das otimizações do analista
+      const avgOptimized = exactPattern.totalOptimized / exactPattern.count;
+      const avgOriginal = exactPattern.totalOriginal / exactPattern.count;
+      const ratio = avgOptimized / avgOriginal;
       
-      optimizedQuantity *= referenceAdjustment;
-      confidence += refPattern.confidence * 0.4; // Até 40% da confiança
-      factors.push(`REF: ${((referenceAdjustment - 1) * 100).toFixed(1)}% (${refPattern.count} exemplos)`);
-      hasPattern = true;
+      totalAdjustmentFactor = ratio;
+      confidence = Math.min(exactPattern.count / 5, 1.0); // Alta confiança para padrões exatos
+      factors.push(`PADRÃO EXATO: ${exactPattern.count} exemplos - Média: ${avgOptimized.toFixed(1)}`);
+      patternCount++;
     }
 
-    // Aplicar padrões por tamanho do analista
+    // PRIORIDADE 2: Padrão por referência (se não houver padrão exato)
+    if (patternCount === 0 && modelWeights.referencePatterns && modelWeights.referencePatterns[item.referencia]) {
+      const refPattern = modelWeights.referencePatterns[item.referencia];
+      totalAdjustmentFactor *= refPattern.avgAdjustmentRatio;
+      confidence += refPattern.confidence * 0.6;
+      factors.push(`REF "${item.referencia}": ${((refPattern.avgAdjustmentRatio - 1) * 100).toFixed(1)}% (${refPattern.count} exemplos)`);
+      patternCount++;
+    }
+
+    // PRIORIDADE 3: Padrão por tamanho (complementar)
     if (modelWeights.sizePatterns && modelWeights.sizePatterns[item.tamanho]) {
       const sizePattern = modelWeights.sizePatterns[item.tamanho];
-      const sizeAdjustment = sizePattern.avgAdjustmentRatio;
+      const sizeWeight = patternCount === 0 ? 0.5 : 0.3; // Peso menor se já houver outros padrões
+      const sizeAdjustment = 1 + (sizePattern.avgAdjustmentRatio - 1) * sizeWeight;
       
-      optimizedQuantity *= sizeAdjustment;
-      confidence += sizePattern.confidence * 0.25; // Até 25% da confiança
-      factors.push(`TAM: ${((sizeAdjustment - 1) * 100).toFixed(1)}% (${sizePattern.count} exemplos)`);
-      hasPattern = true;
+      totalAdjustmentFactor *= sizeAdjustment;
+      confidence += sizePattern.confidence * 0.25;
+      factors.push(`TAM "${item.tamanho}": ${((sizeAdjustment - 1) * 100).toFixed(1)}% (${sizePattern.count} exemplos)`);
+      patternCount++;
     }
 
-    // Aplicar padrões por cor do analista
+    // PRIORIDADE 4: Padrão por cor (complementar)
     if (modelWeights.colorPatterns && modelWeights.colorPatterns[item.cor]) {
       const colorPattern = modelWeights.colorPatterns[item.cor];
-      const colorAdjustment = colorPattern.avgAdjustmentRatio;
+      const colorWeight = patternCount === 0 ? 0.4 : 0.2;
+      const colorAdjustment = 1 + (colorPattern.avgAdjustmentRatio - 1) * colorWeight;
       
-      optimizedQuantity *= colorAdjustment;
-      confidence += colorPattern.confidence * 0.2; // Até 20% da confiança
-      factors.push(`COR: ${((colorAdjustment - 1) * 100).toFixed(1)}% (${colorPattern.count} exemplos)`);
-      hasPattern = true;
+      totalAdjustmentFactor *= colorAdjustment;
+      confidence += colorPattern.confidence * 0.2;
+      factors.push(`COR "${item.cor}": ${((colorAdjustment - 1) * 100).toFixed(1)}% (${colorPattern.count} exemplos)`);
+      patternCount++;
     }
 
-    // Aplicar padrões por faixa de quantidade do analista
+    // PRIORIDADE 5: Padrão por faixa de quantidade (apenas como ajuste fino)
     const quantityRange = this.getQuantityRange(item.qtd);
     if (modelWeights.quantityRangePatterns && modelWeights.quantityRangePatterns[quantityRange]) {
       const rangePattern = modelWeights.quantityRangePatterns[quantityRange];
-      const rangeAdjustment = rangePattern.avgAdjustmentRatio;
+      const rangeWeight = patternCount === 0 ? 0.3 : 0.1;
+      const rangeAdjustment = 1 + (rangePattern.avgAdjustmentRatio - 1) * rangeWeight;
       
-      optimizedQuantity *= rangeAdjustment;
-      confidence += rangePattern.confidence * 0.15; // Até 15% da confiança
-      factors.push(`Faixa: ${((rangeAdjustment - 1) * 100).toFixed(1)}% (${rangePattern.count} exemplos)`);
-      hasPattern = true;
+      totalAdjustmentFactor *= rangeAdjustment;
+      confidence += rangePattern.confidence * 0.15;
+      factors.push(`Faixa ${quantityRange}: ${((rangeAdjustment - 1) * 100).toFixed(1)}% (${rangePattern.count} exemplos)`);
+      patternCount++;
     }
 
-    // Aplicar modelo de regressão linear treinado nos dados do analista
-    if (modelWeights.linearRegression && modelWeights.linearRegression.coefficients) {
-      const regression = modelWeights.linearRegression;
-      const regressionPrediction = this.applyLinearRegression(features, regression);
-      
-      // Combinar com peso baseado na qualidade do modelo R²
-      const regressionWeight = Math.min(regression.rSquared || 0.3, 0.5);
-      if (regressionWeight > 0.3) { // Só usar se R² for razoável
-        optimizedQuantity = (optimizedQuantity * (1 - regressionWeight)) + 
-                           (regressionPrediction * regressionWeight);
-        confidence += regressionWeight * 0.3;
-        factors.push(`ML R²=${(regression.rSquared * 100).toFixed(1)}%`);
-        hasPattern = true;
-      }
+    // Calcular quantidade otimizada
+    let optimizedQuantity = Math.round(baseQuantity * totalAdjustmentFactor);
+
+    // Se não encontrou nenhum padrão, usar dados gerais do treinamento
+    if (patternCount === 0 && modelWeights.statistics) {
+      const globalRatio = modelWeights.statistics.avgAdjustmentRatio || 1.0;
+      optimizedQuantity = Math.round(baseQuantity * globalRatio);
+      confidence = 0.1;
+      factors.push(`Padrão geral: ${((globalRatio - 1) * 100).toFixed(1)}% (baseado em ${modelWeights.sample_size} exemplos)`);
     }
 
-    // Se não encontrou padrões históricos, manter quantidade original
-    if (!hasPattern) {
-      factors.push('Sem padrão histórico - mantendo quantidade original');
+    // Se ainda não há padrões, manter quantidade original
+    if (patternCount === 0 && !modelWeights.statistics) {
+      optimizedQuantity = baseQuantity;
       confidence = 0.0;
+      factors.push('Sem padrão histórico - mantendo quantidade original');
     }
 
-    // Aplicar apenas a tolerância definida pelo usuário (não regras arbitrárias)
-    const toleranceRange = tolerance / 100;
-    const randomFactor = 1 + (Math.random() - 0.5) * 2 * toleranceRange;
-    optimizedQuantity *= randomFactor;
+    // Aplicar tolerância apenas como variação final
+    if (tolerance > 0) {
+      const toleranceRange = tolerance / 100;
+      const randomFactor = 1 + (Math.random() - 0.5) * 2 * toleranceRange;
+      optimizedQuantity = Math.round(optimizedQuantity * randomFactor);
+    }
 
-    // Arredondar para número inteiro e garantir mínimo de 1
-    optimizedQuantity = Math.max(1, Math.round(optimizedQuantity));
+    // Garantir mínimo de 1
+    optimizedQuantity = Math.max(1, optimizedQuantity);
     confidence = Math.min(confidence, 1.0);
 
     return {
@@ -404,10 +419,13 @@ class RealApiService {
       throw new Error('Dados insuficientes para treinamento. Mínimo: 5 exemplos');
     }
     
+    // PADRÕES EXATOS: Combinações específicas de referência+tamanho+cor
+    const exactPatterns = this.analyzeExactPatterns(cleanedData);
+    
     // Análise de padrões por categoria
-    const referencePatterns = this.analyzePatternsByCategory(cleanedData, 'Referência');
-    const colorPatterns = this.analyzePatternsByCategory(cleanedData, 'Cor');
-    const sizePatterns = this.analyzePatternsByCategory(cleanedData, 'Tamanho');
+    const referencePatterns = this.analyzePatternsByCategory(cleanedData, 'referencia');
+    const colorPatterns = this.analyzePatternsByCategory(cleanedData, 'cor');
+    const sizePatterns = this.analyzePatternsByCategory(cleanedData, 'tamanho');
     const quantityRangePatterns = this.analyzeQuantityRangePatterns(cleanedData);
     
     // Treinamento de regressão linear
@@ -421,6 +439,7 @@ class RealApiService {
     
     // Métricas de qualidade do modelo
     const qualityMetrics = this.calculateModelQuality(cleanedData, {
+      exactPatterns,
       referencePatterns,
       colorPatterns, 
       sizePatterns,
@@ -431,6 +450,9 @@ class RealApiService {
     console.log('Treinamento concluído. Qualidade do modelo:', qualityMetrics);
     
     return {
+      // Padrões específicos (NOVA FUNCIONALIDADE)
+      exactPatterns,
+      
       // Padrões por categoria
       referencePatterns,
       colorPatterns,
@@ -446,7 +468,7 @@ class RealApiService {
       qualityMetrics,
       sample_size: cleanedData.length,
       trained_at: new Date().toISOString(),
-      version: 'v2.0-advanced',
+      version: 'v3.0-pattern-based',
       
       // Estatísticas gerais
       statistics: {
@@ -457,36 +479,163 @@ class RealApiService {
       }
     };
   }
+
+  private analyzeExactPatterns(data: any[]) {
+    const patterns: Record<string, any> = {};
+    
+    // Agrupar por combinação exata de referência+tamanho+cor
+    data.forEach((item: any) => {
+      const key = `${item.referencia}-${item.tamanho}-${item.cor}`;
+      
+      if (!patterns[key]) {
+        patterns[key] = {
+          referencia: item.referencia,
+          tamanho: item.tamanho,
+          cor: item.cor,
+          examples: [],
+          totalOriginal: 0,
+          totalOptimized: 0,
+          count: 0
+        };
+      }
+      
+      patterns[key].examples.push({
+        qtd: item.qtd,
+        qtd_otimizada: item.qtd_otimizada,
+        ratio: item.adjustment_ratio
+      });
+      patterns[key].totalOriginal += item.qtd;
+      patterns[key].totalOptimized += item.qtd_otimizada;
+      patterns[key].count++;
+    });
+    
+    // Calcular estatísticas para cada padrão exato
+    Object.keys(patterns).forEach(key => {
+      const pattern = patterns[key];
+      pattern.avgOriginalQtd = pattern.totalOriginal / pattern.count;
+      pattern.avgOptimizedQtd = pattern.totalOptimized / pattern.count;
+      pattern.avgAdjustmentRatio = pattern.avgOptimizedQtd / pattern.avgOriginalQtd;
+      
+      // Para padrões exatos, alta confiança mesmo com poucos exemplos
+      pattern.confidence = Math.min(pattern.count / 3, 1.0);
+      
+      // Calcular variabilidade das otimizações
+      const ratios = pattern.examples.map((ex: any) => ex.ratio);
+      pattern.variability = this.calculateVariance(ratios);
+      
+      // Manter apenas um exemplo representativo para economizar espaço
+      pattern.representativeExample = pattern.examples[0];
+      delete pattern.examples;
+    });
+    
+    return patterns;
+  }
   
   private validateAndCleanTrainingData(data: any[]) {
-    return data.filter(item => {
+    console.log('Dados brutos recebidos:', data.length, 'itens');
+    if (data.length > 0) {
+      console.log('Exemplo de item bruto:', JSON.stringify(data[0], null, 2));
+      console.log('Campos disponíveis:', Object.keys(data[0]));
+    }
+
+    // Mapear nomes de campos flexivelmente
+    const mapFieldNames = (item: any) => {
+      const keys = Object.keys(item);
+      
+      // Buscar referência com variações
+      const refKey = keys.find(k => 
+        k.toLowerCase().includes('ref') || 
+        k.toLowerCase().includes('referencia') ||
+        k.toLowerCase() === 'referência'
+      );
+      
+      // Buscar cor
+      const corKey = keys.find(k => 
+        k.toLowerCase() === 'cor' ||
+        k.toLowerCase() === 'color'
+      );
+      
+      // Buscar tamanho 
+      const tamanhoKey = keys.find(k => 
+        k.toLowerCase() === 'tamanho' ||
+        k.toLowerCase() === 'tam' ||
+        k.toLowerCase() === 'size'
+      );
+      
+      // Buscar quantidade
+      const qtdKey = keys.find(k => 
+        k.toLowerCase() === 'qtd' ||
+        k.toLowerCase() === 'quantidade' ||
+        k.toLowerCase() === 'qty'
+      );
+      
+      // Buscar quantidade otimizada
+      const qtdOtimKey = keys.find(k => 
+        k.toLowerCase().includes('otim') ||
+        k.toLowerCase().includes('optimiz') ||
+        k.toLowerCase() === 'qtd_otimizada'
+      );
+
+      return {
+        referencia: refKey ? item[refKey] : null,
+        cor: corKey ? item[corKey] : null,
+        tamanho: tamanhoKey ? item[tamanhoKey] : null,
+        qtd: qtdKey ? item[qtdKey] : null,
+        qtd_otimizada: qtdOtimKey ? item[qtdOtimKey] : null
+      };
+    };
+
+    const cleanedData = data.map(mapFieldNames).filter(item => {
       // Validar campos obrigatórios
       const hasRequiredFields = 
-        item.Referência && 
-        item.Cor && 
-        item.Tamanho && 
-        typeof item.Qtd !== 'undefined' && 
-        typeof item.Qtd_Otimizada !== 'undefined';
+        item.referencia && 
+        item.cor && 
+        item.tamanho && 
+        typeof item.qtd !== 'undefined' && 
+        typeof item.qtd_otimizada !== 'undefined';
       
-      if (!hasRequiredFields) return false;
+      if (!hasRequiredFields) {
+        console.log('Item rejeitado por campos faltantes:', item);
+        return false;
+      }
       
       // Converter e validar números
-      const qtd = typeof item.Qtd === 'number' ? item.Qtd : parseFloat(item.Qtd);
-      const qtdOtimizada = typeof item.Qtd_Otimizada === 'number' ? 
-        item.Qtd_Otimizada : parseFloat(item.Qtd_Otimizada);
+      const qtd = typeof item.qtd === 'number' ? item.qtd : parseFloat(item.qtd);
+      const qtdOtimizada = typeof item.qtd_otimizada === 'number' ? 
+        item.qtd_otimizada : parseFloat(item.qtd_otimizada);
       
-      return !isNaN(qtd) && !isNaN(qtdOtimizada) && qtd > 0 && qtdOtimizada > 0;
+      const isValid = !isNaN(qtd) && !isNaN(qtdOtimizada) && qtd > 0 && qtdOtimizada > 0;
+      if (!isValid) {
+        console.log('Item rejeitado por números inválidos:', { qtd, qtdOtimizada });
+      }
+      
+      return isValid;
     }).map(item => ({
-      referencia: String(item.Referência).trim(),
-      cor: String(item.Cor).trim(),
-      tamanho: String(item.Tamanho).trim(),
-      qtd: typeof item.Qtd === 'number' ? item.Qtd : parseFloat(item.Qtd),
-      qtd_otimizada: typeof item.Qtd_Otimizada === 'number' ? 
-        item.Qtd_Otimizada : parseFloat(item.Qtd_Otimizada),
-      adjustment_ratio: (typeof item.Qtd_Otimizada === 'number' ? 
-        item.Qtd_Otimizada : parseFloat(item.Qtd_Otimizada)) / 
-        (typeof item.Qtd === 'number' ? item.Qtd : parseFloat(item.Qtd))
+      referencia: String(item.referencia).trim(),
+      cor: String(item.cor).trim(),
+      tamanho: String(item.tamanho).trim(),
+      qtd: typeof item.qtd === 'number' ? item.qtd : parseFloat(item.qtd),
+      qtd_otimizada: typeof item.qtd_otimizada === 'number' ? 
+        item.qtd_otimizada : parseFloat(item.qtd_otimizada),
+      adjustment_ratio: (typeof item.qtd_otimizada === 'number' ? 
+        item.qtd_otimizada : parseFloat(item.qtd_otimizada)) / 
+        (typeof item.qtd === 'number' ? item.qtd : parseFloat(item.qtd))
     }));
+
+    console.log('Dados limpos finais:', cleanedData.length, 'itens válidos');
+    if (cleanedData.length > 0) {
+      console.log('Exemplo de item limpo:', cleanedData[0]);
+      // Mostrar alguns padrões encontrados
+      const referencias = [...new Set(cleanedData.map(item => item.referencia))];
+      const cores = [...new Set(cleanedData.map(item => item.cor))];
+      const tamanhos = [...new Set(cleanedData.map(item => item.tamanho))];
+      
+      console.log('Referências encontradas:', referencias.slice(0, 5));
+      console.log('Cores encontradas:', cores.slice(0, 5)); 
+      console.log('Tamanhos encontrados:', tamanhos.slice(0, 5));
+    }
+
+    return cleanedData;
   }
   
   private analyzePatternsByCategory(data: any[], categoryField: string) {
