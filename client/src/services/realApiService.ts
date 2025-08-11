@@ -101,97 +101,87 @@ class RealApiService {
   }
 
   private predictOptimalQuantity(item: ProductionItem, modelWeights: any, tolerance: number) {
-    // Aplicar algoritmo de predição específico para otimização de enfesto de corte
+    // Predição baseada EXCLUSIVAMENTE nos padrões históricos do analista
     const features = this.extractItemFeatures(item);
     let optimizedQuantity = item.qtd;
-    let confidence = 0.3; // Base mais baixa para enfesto
+    let confidence = 0.1; // Base muito baixa, só aumenta com padrões conhecidos
     const factors = [];
+    let hasPattern = false;
 
-    // Regras específicas para enfesto de corte por referência
+    // Aplicar padrões aprendidos por referência (prioridade máxima)
     if (modelWeights.referencePatterns && modelWeights.referencePatterns[item.referencia]) {
       const refPattern = modelWeights.referencePatterns[item.referencia];
       const referenceAdjustment = refPattern.avgAdjustmentRatio;
       
-      // Para enfesto, referências com muitas variações de tamanho precisam ajuste maior
-      const variabilityBonus = Math.min(refPattern.variability || 0, 0.3);
-      const finalAdjustment = referenceAdjustment * (1 + variabilityBonus);
-      
-      optimizedQuantity *= finalAdjustment;
-      confidence += 0.25;
-      factors.push(`Padrão REF: ${((finalAdjustment - 1) * 100).toFixed(1)}%`);
+      optimizedQuantity *= referenceAdjustment;
+      confidence += refPattern.confidence * 0.4; // Até 40% da confiança
+      factors.push(`REF: ${((referenceAdjustment - 1) * 100).toFixed(1)}% (${refPattern.count} exemplos)`);
+      hasPattern = true;
     }
 
-    // Regras por tamanho - crítico para eficiência do enfesto
+    // Aplicar padrões por tamanho do analista
     if (modelWeights.sizePatterns && modelWeights.sizePatterns[item.tamanho]) {
       const sizePattern = modelWeights.sizePatterns[item.tamanho];
-      let sizeAdjustment = sizePattern.avgAdjustmentRatio;
-      
-      // Tamanhos extremos (PP, GG) geralmente precisam ajuste para otimizar camadas
-      const extremeSizes = ['PP', 'XS', 'GG', 'XG', 'XXG', '3G', '4G'];
-      if (extremeSizes.some(size => item.tamanho.toUpperCase().includes(size))) {
-        sizeAdjustment *= 1.1; // Aumentar um pouco para compensar baixa demanda
-        factors.push('Ajuste tamanho extremo');
-      }
+      const sizeAdjustment = sizePattern.avgAdjustmentRatio;
       
       optimizedQuantity *= sizeAdjustment;
-      confidence += 0.2;
-      factors.push(`Padrão TAM: ${((sizeAdjustment - 1) * 100).toFixed(1)}%`);
+      confidence += sizePattern.confidence * 0.25; // Até 25% da confiança
+      factors.push(`TAM: ${((sizeAdjustment - 1) * 100).toFixed(1)}% (${sizePattern.count} exemplos)`);
+      hasPattern = true;
     }
 
-    // Regras por cor - algumas cores podem ter padrões específicos
+    // Aplicar padrões por cor do analista
     if (modelWeights.colorPatterns && modelWeights.colorPatterns[item.cor]) {
       const colorPattern = modelWeights.colorPatterns[item.cor];
       const colorAdjustment = colorPattern.avgAdjustmentRatio;
+      
       optimizedQuantity *= colorAdjustment;
-      confidence += 0.15;
-      factors.push(`Padrão COR: ${((colorAdjustment - 1) * 100).toFixed(1)}%`);
+      confidence += colorPattern.confidence * 0.2; // Até 20% da confiança
+      factors.push(`COR: ${((colorAdjustment - 1) * 100).toFixed(1)}% (${colorPattern.count} exemplos)`);
+      hasPattern = true;
     }
 
-    // Otimização específica por faixa de quantidade para enfesto
+    // Aplicar padrões por faixa de quantidade do analista
     const quantityRange = this.getQuantityRange(item.qtd);
     if (modelWeights.quantityRangePatterns && modelWeights.quantityRangePatterns[quantityRange]) {
       const rangePattern = modelWeights.quantityRangePatterns[quantityRange];
-      let rangeAdjustment = rangePattern.avgAdjustmentRatio;
-      
-      // Lógica específica do enfesto por faixa
-      if (quantityRange === 'very_low' && item.qtd < 5) {
-        // Quantidades muito baixas são problemáticas no enfesto
-        rangeAdjustment *= 1.2; // Aumentar para formar camadas viáveis
-        factors.push('Ajuste qtd muito baixa');
-      } else if (quantityRange === 'very_high' && item.qtd > 500) {
-        // Quantidades muito altas podem ser reduzidas para enfestos mais eficientes
-        rangeAdjustment *= 0.95;
-        factors.push('Ajuste qtd muito alta');
-      }
+      const rangeAdjustment = rangePattern.avgAdjustmentRatio;
       
       optimizedQuantity *= rangeAdjustment;
-      confidence += 0.1;
-      factors.push(`Faixa ${quantityRange}: ${((rangeAdjustment - 1) * 100).toFixed(1)}%`);
+      confidence += rangePattern.confidence * 0.15; // Até 15% da confiança
+      factors.push(`Faixa: ${((rangeAdjustment - 1) * 100).toFixed(1)}% (${rangePattern.count} exemplos)`);
+      hasPattern = true;
     }
 
-    // Regressor linear com foco em eficiência de enfesto
+    // Aplicar modelo de regressão linear treinado nos dados do analista
     if (modelWeights.linearRegression && modelWeights.linearRegression.coefficients) {
       const regression = modelWeights.linearRegression;
       const regressionPrediction = this.applyLinearRegression(features, regression);
       
-      // Combinar predições com peso baseado na qualidade do modelo
-      const regressionWeight = Math.min(regression.rSquared || 0.4, 0.6);
-      optimizedQuantity = (optimizedQuantity * (1 - regressionWeight)) + 
-                         (regressionPrediction * regressionWeight);
-      confidence += regressionWeight * 0.15;
-      factors.push(`ML R²=${(regression.rSquared * 100).toFixed(1)}%`);
+      // Combinar com peso baseado na qualidade do modelo R²
+      const regressionWeight = Math.min(regression.rSquared || 0.3, 0.5);
+      if (regressionWeight > 0.3) { // Só usar se R² for razoável
+        optimizedQuantity = (optimizedQuantity * (1 - regressionWeight)) + 
+                           (regressionPrediction * regressionWeight);
+        confidence += regressionWeight * 0.3;
+        factors.push(`ML R²=${(regression.rSquared * 100).toFixed(1)}%`);
+        hasPattern = true;
+      }
     }
 
-    // Aplicar regras de eficiência do enfesto
-    optimizedQuantity = this.applySpreadingEfficiencyRules(optimizedQuantity, item);
+    // Se não encontrou padrões históricos, manter quantidade original
+    if (!hasPattern) {
+      factors.push('Sem padrão histórico - mantendo quantidade original');
+      confidence = 0.0;
+    }
 
-    // Aplicar tolerância definida pelo usuário
+    // Aplicar apenas a tolerância definida pelo usuário (não regras arbitrárias)
     const toleranceRange = tolerance / 100;
     const randomFactor = 1 + (Math.random() - 0.5) * 2 * toleranceRange;
     optimizedQuantity *= randomFactor;
 
-    // Garantir quantidade mínima e máxima razoável
-    optimizedQuantity = Math.max(1, Math.min(optimizedQuantity, item.qtd * 3));
+    // Arredondar para número inteiro e garantir mínimo de 1
+    optimizedQuantity = Math.max(1, Math.round(optimizedQuantity));
     confidence = Math.min(confidence, 1.0);
 
     return {
@@ -201,40 +191,7 @@ class RealApiService {
     };
   }
 
-  private applySpreadingEfficiencyRules(quantity: number, item: ProductionItem) {
-    // Regras específicas para otimização de enfesto
-    let optimizedQty = quantity;
 
-    // Arredondar para números que formem camadas eficientes
-    // Múltiplos de 5, 10, 12, 15, 20, 24, 25, 30 são ideais para enfesto
-    const efficientMultiples = [5, 6, 8, 10, 12, 15, 20, 24, 25, 30];
-    let bestMultiple = Math.round(optimizedQty);
-    let minDifference = Math.abs(optimizedQty - bestMultiple);
-
-    for (const multiple of efficientMultiples) {
-      const candidates = [
-        Math.floor(optimizedQty / multiple) * multiple,
-        Math.ceil(optimizedQty / multiple) * multiple
-      ];
-
-      for (const candidate of candidates) {
-        if (candidate > 0) {
-          const difference = Math.abs(optimizedQty - candidate);
-          if (difference < minDifference && candidate <= item.qtd * 2) {
-            minDifference = difference;
-            bestMultiple = candidate;
-          }
-        }
-      }
-    }
-
-    // Se a diferença for muito grande, manter o valor original arredondado
-    if (minDifference > optimizedQty * 0.2) {
-      bestMultiple = Math.round(optimizedQty);
-    }
-
-    return Math.max(1, bestMultiple);
-  }
 
   private extractItemFeatures(item: ProductionItem): number[] {
     // Extrair características numéricas do item para machine learning
@@ -921,6 +878,50 @@ class RealApiService {
     } catch (error) {
       console.error('Erro ao verificar autenticação:', error);
       return false;
+    }
+  }
+
+  async deleteTraining(trainingId: string): Promise<void> {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Usuário não autenticado');
+
+      // Excluir dados de treinamento relacionados
+      const { error: trainingDataError } = await supabase
+        .from('training_data')
+        .delete()
+        .eq('user_id', user.id);
+
+      if (trainingDataError) {
+        console.error('Erro ao excluir dados de treinamento:', trainingDataError);
+      }
+
+      // Excluir modelo treinado do Supabase
+      const { error: modelError } = await supabase
+        .from('model_weights')
+        .delete()
+        .eq('user_id', user.id);
+
+      if (modelError) {
+        console.error('Erro ao excluir modelo:', modelError);
+      }
+
+      // Excluir sessão de treinamento
+      const { error: sessionError } = await supabase
+        .from('training_sessions')
+        .delete()
+        .eq('id', trainingId)
+        .eq('user_id', user.id);
+
+      if (sessionError) {
+        console.error('Erro ao excluir sessão:', sessionError);
+        throw new Error('Erro ao excluir treinamento: ' + sessionError.message);
+      }
+
+      console.log('Treinamento excluído com sucesso:', trainingId);
+    } catch (error) {
+      console.error('Erro ao excluir treinamento:', error);
+      throw error;
     }
   }
 }

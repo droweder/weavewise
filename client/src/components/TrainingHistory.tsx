@@ -5,7 +5,7 @@ import { FileUpload } from './FileUpload';
 import { ModelMetrics } from './ModelMetrics';
 import { TrainingDataViewer } from './TrainingDataViewer';
 import { ModelComparison } from './ModelComparison';
-import { Play, Calendar, CheckCircle, XCircle, Clock, ChevronDown, ChevronUp } from 'lucide-react';
+import { Play, Calendar, CheckCircle, XCircle, Clock, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 
 export const TrainingHistory: React.FC = () => {
   const [trainingHistory, setTrainingHistory] = useState<TrainingHistoryEntry[]>([]);
@@ -18,6 +18,7 @@ export const TrainingHistory: React.FC = () => {
   const [trainingSuccess, setTrainingSuccess] = useState(false);
   const [showTrainingData, setShowTrainingData] = useState(false);
   const [showModelComparison, setShowModelComparison] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -71,6 +72,27 @@ export const TrainingHistory: React.FC = () => {
         return <XCircle className="h-5 w-5 text-red-500" />;
       default:
         return <Clock className="h-5 w-5 text-yellow-500" />;
+    }
+  };
+
+  const handleDeleteTraining = async (trainingId: string) => {
+    if (!confirm('Tem certeza que deseja excluir este treinamento? Esta ação não pode ser desfeita.')) {
+      return;
+    }
+
+    setDeletingId(trainingId);
+    try {
+      await realApiService.deleteTraining(trainingId);
+      
+      // Refresh training history after deletion
+      const history = await realApiService.getTrainingHistory();
+      setTrainingHistory(history);
+      
+      setError(null);
+    } catch (err) {
+      setError('Erro ao excluir treinamento: ' + (err as Error).message);
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -219,6 +241,9 @@ export const TrainingHistory: React.FC = () => {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Detalhes
                     </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Ações
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -246,6 +271,20 @@ export const TrainingHistory: React.FC = () => {
                         {entry.mensagem_erro && (
                           <span className="text-red-600">{entry.mensagem_erro}</span>
                         )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <button
+                          onClick={() => handleDeleteTraining(entry.id)}
+                          disabled={deletingId === entry.id}
+                          className="text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                          title="Excluir treinamento"
+                        >
+                          {deletingId === entry.id ? (
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600"></div>
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </button>
                       </td>
                     </tr>
                   ))}
