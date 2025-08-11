@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Upload, Play, Save, RotateCcw, Eye, EyeOff } from 'lucide-react';
 import { realApiService } from '../services/realApiService';
 import { ProductionItem } from '../types';
+import * as XLSX from 'xlsx';
 
 export const ProductionOptimizer: React.FC = () => {
   const [items, setItems] = useState<ProductionItem[]>([]);
@@ -37,9 +38,10 @@ export const ProductionOptimizer: React.FC = () => {
         
         // Converter para o formato esperado
         const productionItems: ProductionItem[] = jsonData.map((row, index) => ({
-          id: index + 1,
-          cod: row.Cod || row.cod || row['Código'] || '',
-          descricao: row.Descricao || row.descricao || row['Descrição'] || '',
+          id: `${index + 1}`,
+          referencia: row.Referência || row.referencia || row['Referência'] || '',
+          cor: row.Cor || row.cor || row['Cor'] || '',
+          tamanho: row.Tamanho || row.tamanho || row['Tamanho'] || '',
           qtd: typeof row.Qtd === 'number' ? row.Qtd : parseFloat(row.Qtd) || 0,
           qtd_otimizada: 0,
           diferenca: 0,
@@ -94,8 +96,9 @@ export const ProductionOptimizer: React.FC = () => {
     try {
       // Criar planilha com dados otimizados
       const wsData = optimizedItems.map(item => ({
-        'Código': item.cod,
-        'Descrição': item.descricao,
+        'Referência': item.referencia,
+        'Cor': item.cor,
+        'Tamanho': item.tamanho,
         'Quantidade Original': item.qtd,
         'Quantidade Otimizada': item.qtd_otimizada,
         'Diferença': item.diferenca
@@ -140,11 +143,11 @@ export const ProductionOptimizer: React.FC = () => {
   // Função para carregar dados de exemplo
   const loadSampleData = () => {
     const sampleItems: ProductionItem[] = [
-      { id: 1, cod: 'T001', descricao: 'Tecido Algodão 100%', qtd: 150, qtd_otimizada: 0, diferenca: 0, editavel: true },
-      { id: 2, cod: 'T002', descricao: 'Tecido Poliéster', qtd: 200, qtd_otimizada: 0, diferenca: 0, editavel: true },
-      { id: 3, cod: 'T003', descricao: 'Tecido Viscose', qtd: 120, qtd_otimizada: 0, diferenca: 0, editavel: true },
-      { id: 4, cod: 'T004', descricao: 'Tecido Linho', qtd: 80, qtd_otimizada: 0, diferenca: 0, editavel: true },
-      { id: 5, cod: 'T005', descricao: 'Tecido Seda', qtd: 50, qtd_otimizada: 0, diferenca: 0, editavel: true }
+      { id: '1', referencia: 'REF001', cor: 'Azul', tamanho: 'M', qtd: 150, qtd_otimizada: 0, diferenca: 0, editavel: true },
+      { id: '2', referencia: 'REF002', cor: 'Vermelho', tamanho: 'G', qtd: 200, qtd_otimizada: 0, diferenca: 0, editavel: true },
+      { id: '3', referencia: 'REF003', cor: 'Verde', tamanho: 'P', qtd: 120, qtd_otimizada: 0, diferenca: 0, editavel: true },
+      { id: '4', referencia: 'REF004', cor: 'Preto', tamanho: 'GG', qtd: 80, qtd_otimizada: 0, diferenca: 0, editavel: true },
+      { id: '5', referencia: 'REF005', cor: 'Branco', tamanho: 'M', qtd: 50, qtd_otimizada: 0, diferenca: 0, editavel: true }
     ];
     
     setItems(sampleItems);
@@ -297,8 +300,9 @@ export const ProductionOptimizer: React.FC = () => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Código</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Descrição</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Referência</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cor</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tamanho</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantidade</th>
                   {showOptimized && optimizedItems.length > 0 && (
                     <>
@@ -311,8 +315,9 @@ export const ProductionOptimizer: React.FC = () => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {(showOptimized && optimizedItems.length > 0 ? optimizedItems : items).map((item) => (
                   <tr key={item.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.cod}</td>
-                    <td className="px-6 py-4 text-sm text-gray-500">{item.descricao}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.referencia}</td>
+                    <td className="px-6 py-4 text-sm text-gray-500">{item.cor}</td>
+                    <td className="px-6 py-4 text-sm text-gray-500">{item.tamanho}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.qtd}</td>
                     {showOptimized && optimizedItems.length > 0 && (
                       <>
@@ -351,5 +356,4 @@ export const ProductionOptimizer: React.FC = () => {
   );
 };
 
-// Adicionando a importação do XLSX
-import * as XLSX from 'xlsx';
+
