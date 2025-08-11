@@ -1,14 +1,26 @@
 import { createClient } from '@supabase/supabase-js'
 
-// Verificar se as variáveis de ambiente estão definidas
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-console.log('Supabase URL:', supabaseUrl)
-console.log('Supabase Anon Key:', supabaseAnonKey)
-
 if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Supabase URL e/ou chave anônima não configurados')
+  console.warn('Supabase credentials not configured. Using mock data.')
+  // Criar um cliente mock para desenvolvimento
+  const mockClient = {
+    auth: {
+      getUser: () => Promise.resolve({ data: { user: null }, error: null }),
+      signUp: () => Promise.resolve({ data: null, error: { message: 'Supabase not configured' } }),
+      signInWithPassword: () => Promise.resolve({ data: null, error: { message: 'Supabase not configured' } }),
+      signOut: () => Promise.resolve({ error: null }),
+      onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } })
+    },
+    from: () => ({
+      select: () => ({ eq: () => ({ order: () => Promise.resolve({ data: [], error: null }) }) }),
+      insert: () => Promise.resolve({ data: null, error: null }),
+      update: () => ({ eq: () => Promise.resolve({ data: null, error: null }) })
+    })
+  }
+  export const supabase = mockClient as any
+} else {
+  export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 }
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
