@@ -1,12 +1,13 @@
 import { createClient } from '@supabase/supabase-js'
 
-// Usar variáveis de ambiente se disponíveis, senão usar valores fixos
+// Usar variáveis de ambiente com fallback para os valores corretos
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://qppfutmnmufjynsmmdxb.supabase.co'
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFwcGZ1dG1ubXVmanluc21tZHhiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM2MzY4MDUsImV4cCI6MjA2OTIxMjgwNX0.EcsaPDzmHnSMx_sV8Q_NczLJROpwKd-OqLDEwwMFuXE'
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFwcGZ1dG1ubXVmanluc21tZHhiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ4NjA5NzgsImV4cCI6MjA3MDQzNjk3OH0.BKgm-ak2rlZKvOmiSXIq7058y9QrIy5VDjWwkzrAUdE'
 
-// Log para debug
-console.log('Supabase URL:', supabaseUrl);
-console.log('Supabase Key (primeiros 20 chars):', supabaseAnonKey.substring(0, 20) + '...');
+// Validar que as variáveis existem
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error('Erro crítico: Configuração do Supabase inválida!');
+}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
