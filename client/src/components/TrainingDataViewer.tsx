@@ -27,7 +27,7 @@ export const TrainingDataViewer: React.FC = () => {
 
 
 
-  // Função para ordenar cabeçalhos na ordem desejada: Referência, Tamanho, Cor, Quantidade...
+  // Função para ordenar cabeçalhos na ordem desejada: Referência, Tamanho, Cor, QTD, QTD_OTIMIZADA...
   const getOrderedHeaders = (item: any) => {
     const allHeaders = Object.keys(item);
     
@@ -50,7 +50,7 @@ export const TrainingDataViewer: React.FC = () => {
       }
     });
     
-    // Adicionar colunas calculadas
+    // Adicionar colunas calculadas após QTD_OTIMIZADA
     result.push('camadas', 'repeticoes');
     
     // Adicionar outros cabeçalhos que não estão na lista ordenada
@@ -90,8 +90,8 @@ export const TrainingDataViewer: React.FC = () => {
   const detectLayersForRefCor = (data: any[], referencia: string, cor: string): number => {
     // Filtrar itens da mesma referência+cor
     const sameRefCorItems = data.filter(item => {
-      const itemRef = String(item.referencia || item.Referência || item.REFERENCIA || '');
-      const itemCor = String(item.cor || item.Cor || item.COR || '');
+      const itemRef = String(item.referencia || item.Referência || item.REFERENCIA || item['Referência'] || '');
+      const itemCor = String(item.cor || item.Cor || item.COR || item['Cor'] || '');
       return itemRef === String(referencia) && itemCor === String(cor);
     });
     
@@ -127,15 +127,15 @@ export const TrainingDataViewer: React.FC = () => {
   // Função para obter valor de uma célula (incluindo cálculos)
   const getCellValue = (item: any, header: string) => {
     if (header === 'camadas') {
-      const referencia = String(item.referencia || item.Referência || item.REFERENCIA || '');
-      const cor = String(item.cor || item.Cor || item.COR || '');
+      const referencia = String(item.referencia || item.Referência || item.REFERENCIA || item['Referência'] || '');
+      const cor = String(item.cor || item.Cor || item.COR || item['Cor'] || '');
       return detectLayersForRefCor(trainingData, referencia, cor);
     }
     
     if (header === 'repeticoes') {
-      const qtdOtimizada = parseInt(item.qtd_otimizada || item.Qtd_otimizada || item.QTD_OTIMIZADA || item.qtd || 0);
-      const referencia = item.referencia || item.Referência || item.REFERENCIA || '';
-      const cor = item.cor || item.Cor || item.COR || '';
+      const qtdOtimizada = parseInt(item.qtd_otimizada || item.Qtd_otimizada || item.QTD_OTIMIZADA || item['Qtd_Otimizada'] || item.qtd || item.Qtd || item.QTD || 0);
+      const referencia = String(item.referencia || item.Referência || item.REFERENCIA || item['Referência'] || '');
+      const cor = String(item.cor || item.Cor || item.COR || item['Cor'] || '');
       const camadas = detectLayersForRefCor(trainingData, referencia, cor);
       
       return camadas > 0 ? Math.round(qtdOtimizada / camadas) : 1;
@@ -161,21 +161,6 @@ export const TrainingDataViewer: React.FC = () => {
 
         // Extrair dados de todos os registros
         const allData = data.flatMap(record => record.data);
-        
-        // Debug: verificar se 60797 está nos dados
-        const has60797 = allData.some(item => {
-          const ref = String(item.referencia || item.Referência || item.REFERENCIA || '');
-          return ref === '60797';
-        });
-        console.log('Dados carregados. Total:', allData.length, 'Tem 60797?', has60797);
-        if (has60797) {
-          const items60797 = allData.filter(item => {
-            const ref = String(item.referencia || item.Referência || item.REFERENCIA || '');
-            return ref === '60797';
-          });
-          console.log('Itens da 60797:', items60797);
-        }
-        
         setTrainingData(allData);
       } catch (err) {
         setError('Erro ao carregar dados de treinamento');
