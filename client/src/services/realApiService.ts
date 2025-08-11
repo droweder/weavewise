@@ -1165,49 +1165,93 @@ class RealApiService {
   }
 
   async signup(email: string, password: string) {
-    // Criar usuário
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`
+    try {
+      // Criar usuário
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`
+        }
+      });
+
+      if (error) {
+        console.error('Erro no signup:', error);
+        return { 
+          data: null, 
+          error: {
+            message: error.message || 'Erro ao criar conta',
+            status: error.status
+          }
+        };
       }
-    });
 
-    if (error) {
-      throw error;
+      // Para contas criadas com sucesso, fazer login automático
+      if (data.user) {
+        // Fazer login automático após criação
+        const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
+          email,
+          password
+        });
+
+        if (loginError) {
+          console.error('Erro no login automático:', loginError);
+          return { 
+            data: null, 
+            error: {
+              message: loginError.message || 'Conta criada mas erro ao fazer login',
+              status: loginError.status
+            }
+          };
+        }
+
+        return { data: loginData, error: null };
+      }
+
+      return { data, error: null };
+    } catch (err: any) {
+      console.error('Erro inesperado no signup:', err);
+      return { 
+        data: null, 
+        error: {
+          message: 'Erro ao conectar com o servidor',
+          status: 500
+        }
+      };
     }
+  }
 
-    // Para contas criadas com sucesso, fazer login automático
-    if (data.user) {
-      // Fazer login automático após criação
-      const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
+  async login(email: string, password: string) {
+    try {
+      // Fazer login
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password
       });
 
-      if (loginError) {
-        throw loginError;
+      if (error) {
+        console.error('Erro no login:', error);
+        // Retornar erro formatado
+        return { 
+          data: null, 
+          error: {
+            message: error.message || 'Erro ao fazer login',
+            status: error.status
+          }
+        };
       }
 
-      return { data: loginData, error: null };
+      return { data, error: null };
+    } catch (err: any) {
+      console.error('Erro inesperado no login:', err);
+      return { 
+        data: null, 
+        error: {
+          message: 'Erro ao conectar com o servidor',
+          status: 500
+        }
+      };
     }
-
-    return { data, error };
-  }
-
-  async login(email: string, password: string) {
-    // Fazer login
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password
-    });
-
-    if (error) {
-      throw error;
-    }
-
-    return { data, error };
   }
 
   async logout() {
@@ -1218,9 +1262,20 @@ class RealApiService {
     return await supabase.auth.getUser();
   }
 
+  async getSession() {
+    return await supabase.auth.getSession();
+  }
+
   // Função para verificar se o usuário está autenticado
   async isAuthenticated() {
     try {
+      // Primeiro tentar obter a sessão (mais confiável)
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        return true;
+      }
+      
+      // Se não houver sessão, verificar usuário
       const { data: { user } } = await supabase.auth.getUser();
       return !!user;
     } catch (error) {

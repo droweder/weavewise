@@ -21,19 +21,26 @@ export const Auth: React.FC<AuthProps> = ({ onAuthSuccess }) => {
       let result;
       if (isLogin) {
         result = await realApiService.login(email, password);
-        if (result.error) throw result.error;
+        if (result.error) {
+          // Mostrar erro mais específico
+          const errorMessage = result.error.message || 'Erro ao fazer login';
+          setError(errorMessage);
+          return;
+        }
       } else {
         result = await realApiService.signup(email, password);
-        if (result.error) throw result.error;
-        
-        // Se for signup, fazer login automaticamente
-        if (result.data?.user) {
-          onAuthSuccess();
+        if (result.error) {
+          // Mostrar erro mais específico
+          const errorMessage = result.error.message || 'Erro ao criar conta';
+          setError(errorMessage);
           return;
         }
       }
       
-      onAuthSuccess();
+      // Se chegou aqui, autenticação foi bem sucedida
+      if (result.data) {
+        onAuthSuccess();
+      }
     } catch (err: any) {
       console.error('Erro de autenticação:', err);
       setError(err.message || err.error_description || 'Ocorreu um erro na autenticação');

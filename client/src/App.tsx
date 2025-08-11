@@ -11,8 +11,15 @@ function App() {
     // Verificar se o usuário já está autenticado
     const checkAuthStatus = async () => {
       try {
-        const authenticated = await realApiService.isAuthenticated();
-        setIsAuthenticated(authenticated);
+        // Primeiro, tentar recuperar a sessão existente
+        const { data: { session } } = await realApiService.supabase.auth.getSession();
+        
+        if (session) {
+          setIsAuthenticated(true);
+        } else {
+          const authenticated = await realApiService.isAuthenticated();
+          setIsAuthenticated(authenticated);
+        }
       } catch (error) {
         console.error('Erro ao verificar autenticação:', error);
       } finally {
