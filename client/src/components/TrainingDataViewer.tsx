@@ -27,22 +27,48 @@ export const TrainingDataViewer: React.FC = () => {
 
   // Função para detectar camadas por referência+cor usando MDC
   const detectLayers = (data: any[], referencia: string, cor: string): number => {
+    // Filtrar apenas itens da mesma referência+cor
     const quantities = data
-      .filter(item => item.referencia === referencia && item.cor === cor)
-      .map(item => parseInt(item.qtd_otimizada) || parseInt(item.qtd) || 0)
+      .filter(item => {
+        const itemRef = item.referencia || item.Referência || item.REFERENCIA || '';
+        const itemCor = item.cor || item.Cor || item.COR || '';
+        return itemRef === referencia && itemCor === cor;
+      })
+      .map(item => parseInt(item.qtd_otimizada || item.Qtd_otimizada || item.QTD_OTIMIZADA || item.qtd || item.Qtd || item.QTD) || 0)
       .filter(qtd => qtd > 0);
     
-    if (quantities.length === 0) return 36;
-    if (quantities.length === 1) return quantities[0] > 36 ? 36 : quantities[0];
+    if (quantities.length === 0) {
+      return 36;
+    }
     
+    if (quantities.length === 1) {
+      // Para um único valor, tentar dividir por valores comuns
+      const qtd = quantities[0];
+      const commonDivisors = [36, 48, 24, 30, 42, 18, 12];
+      for (const divisor of commonDivisors) {
+        if (qtd % divisor === 0) {
+          return divisor;
+        }
+      }
+      return 36;
+    }
+    
+    // Calcular MDC de múltiplas quantidades
     const mdc = gcdMultiple(quantities);
     
-    // Validar se o MDC faz sentido (entre 6 e 60)
+    // Validar se o MDC faz sentido como número de camadas
     if (mdc >= 6 && mdc <= 60) {
       return mdc;
     }
     
-    return 36; // Default
+    // Se MDC muito pequeno, tentar encontrar um divisor comum maior
+    const commonDivisors = [36, 48, 24, 30, 42, 18, 12];
+    for (const divisor of commonDivisors) {
+      if (quantities.every(qtd => qtd % divisor === 0)) {
+        return divisor;
+      }
+    }
+    return 36;
   };
 
   // Função para ordenar cabeçalhos na ordem desejada: Referência, Tamanho, Cor, Quantidade...

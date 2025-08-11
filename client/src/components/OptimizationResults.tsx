@@ -2,23 +2,63 @@ import React, { useState } from 'react';
 import { ProductionItem } from '../types';
 import { Save, X } from 'lucide-react';
 
-// Função auxiliar para detectar camadas
-const detectLayers = (quantity: number): number => {
-  const commonLayers = [12, 18, 24, 30, 36, 42, 48];
+// Função auxiliar para calcular MDC
+const gcd = (a: number, b: number): number => {
+  return b === 0 ? a : gcd(b, a % b);
+};
+
+const gcdMultiple = (numbers: number[]): number => {
+  if (numbers.length === 0) return 1;
+  if (numbers.length === 1) return numbers[0];
   
-  for (const layers of commonLayers) {
-    if (quantity % layers === 0) {
-      return layers;
+  let result = numbers[0];
+  for (let i = 1; i < numbers.length; i++) {
+    result = gcd(result, numbers[i]);
+  }
+  return result;
+};
+
+// Função para detectar camadas usando MDC por referência+cor (dados históricos)
+const detectLayers = (items: any[], currentItem: any): number => {
+  const referencia = currentItem.referencia;
+  const cor = currentItem.cor;
+  
+  // Buscar todas as quantidades da mesma referência+cor no resultado atual
+  const quantities = items
+    .filter(item => item.referencia === referencia && item.cor === cor)
+    .map(item => item.qtd_otimizada || item.qtd)
+    .filter(qtd => qtd > 0);
+  
+  if (quantities.length === 0) return 36;
+  
+  if (quantities.length === 1) {
+    const qtd = quantities[0];
+    const commonDivisors = [36, 48, 24, 30, 42, 18, 12];
+    for (const divisor of commonDivisors) {
+      if (qtd % divisor === 0) {
+        return divisor;
+      }
+    }
+    return 36;
+  }
+  
+  // Calcular MDC de múltiplas quantidades
+  const mdc = gcdMultiple(quantities);
+  
+  // Validar se o MDC faz sentido como número de camadas
+  if (mdc >= 6 && mdc <= 60) {
+    return mdc;
+  }
+  
+  // Fallback para divisor comum
+  const commonDivisors = [36, 48, 24, 30, 42, 18, 12];
+  for (const divisor of commonDivisors) {
+    if (quantities.every(qtd => qtd % divisor === 0)) {
+      return divisor;
     }
   }
   
-  for (let i = 60; i >= 6; i--) {
-    if (quantity % i === 0) {
-      return i;
-    }
-  }
-  
-  return Math.max(1, Math.round(quantity / 36));
+  return 36;
 };
 
 interface OptimizationResultsProps {
@@ -112,6 +152,9 @@ export const OptimizationResults: React.FC<OptimizationResultsProps> = ({
                 Qtd Otimizada
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Camadas
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Repetições
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -168,8 +211,13 @@ export const OptimizationResults: React.FC<OptimizationResultsProps> = ({
                   )}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <span className="font-semibold text-green-600">
+                    {detectLayers(items, item)}
+                  </span>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   <span className="font-semibold text-blue-600">
-                    {Math.round((item.qtd_otimizada || item.qtd) / Math.max(1, detectLayers(item.qtd_otimizada || item.qtd)))}
+                    {Math.round((item.qtd_otimizada || item.qtd) / Math.max(1, detectLayers(items, item)))}
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm">
