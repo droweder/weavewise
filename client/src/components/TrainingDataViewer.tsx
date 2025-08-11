@@ -97,9 +97,14 @@ export const TrainingDataViewer: React.FC = () => {
     
     if (sameRefCorItems.length === 0) return 36;
     
-    // Coletar todas as quantidades otimizadas (ou originais se não existir otimizada)
+    // Coletar quantidades OTIMIZADAS preferencialmente (usa QTD só se não tiver QTD_OTIMIZADA)
     const quantities = sameRefCorItems
-      .map(item => parseInt(item.qtd_otimizada || item.Qtd_otimizada || item.QTD_OTIMIZADA || item.qtd || item.Qtd || item.QTD) || 0)
+      .map(item => {
+        const qtdOtimizada = parseInt(item.qtd_otimizada || item.Qtd_otimizada || item.QTD_OTIMIZADA) || 0;
+        const qtdOriginal = parseInt(item.qtd || item.Qtd || item.QTD) || 0;
+        // Sempre usar QTD_OTIMIZADA se existir, senão usar QTD
+        return qtdOtimizada > 0 ? qtdOtimizada : qtdOriginal;
+      })
       .filter(qtd => qtd > 0);
     
     if (quantities.length === 0) return 36;

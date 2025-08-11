@@ -30,9 +30,14 @@ const detectLayers = (items: any[], currentItem: any): number => {
   
   if (sameRefCorItems.length === 0) return 36;
   
-  // Coletar quantidades otimizadas do grupo
+  // Coletar quantidades OTIMIZADAS preferencialmente do grupo
   const quantities = sameRefCorItems
-    .map(item => item.qtd_otimizada || item.qtd)
+    .map(item => {
+      const qtdOtimizada = item.qtd_otimizada || 0;
+      const qtdOriginal = item.qtd || 0;
+      // Sempre usar qtd_otimizada se existir, senão usar qtd
+      return qtdOtimizada > 0 ? qtdOtimizada : qtdOriginal;
+    })
     .filter(qtd => qtd > 0);
   
   if (quantities.length === 0) return 36;
