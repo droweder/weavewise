@@ -138,7 +138,11 @@ export const TrainingDataViewer: React.FC = () => {
       const cor = String(item.cor || item.Cor || item.COR || item['Cor'] || '');
       const camadas = detectLayersForRefCor(trainingData, referencia, cor);
       
-      return camadas > 0 ? Math.round(qtdOtimizada / camadas) : 1;
+      // Calcular repetições como QTD_OTIMIZADA / CAMADAS
+      if (camadas > 0 && qtdOtimizada > 0) {
+        return Math.round(qtdOtimizada / camadas);
+      }
+      return 0;
     }
     
     return item[header] || '';
