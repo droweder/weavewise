@@ -2,7 +2,7 @@
 
 ## Overview
 
-Weavewise is a textile production optimization system that leverages machine learning to optimize manufacturing quantities. The application allows users to upload production data via Excel files, train custom optimization models, and receive intelligent quantity recommendations based on historical patterns. The system features user authentication, data management, model training capabilities, and comprehensive analytics to help textile manufacturers optimize their production planning.
+Weavewise is a textile cutting optimization system that leverages machine learning to optimize fabric cutting quantities in industrial spreading tables (enfesto). The application allows users to upload production data via Excel files containing reference, color, size, and quantity data, train custom optimization models based on historical analyst decisions, and receive intelligent quantity recommendations. The system automates the manual work of textile analysts who optimize cutting quantities to ensure efficient spreading operations - balancing between having too few layers (inefficient) and too many repetitions of the same size (resulting in overly long spreads). The goal is to minimize waste and maximize productivity in the cutting room by learning from historical optimization patterns.
 
 ## User Preferences
 

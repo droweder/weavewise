@@ -140,25 +140,30 @@ export const ProductionOptimizer: React.FC = () => {
     }
   };
 
-  // Função para carregar dados de exemplo
+  // Função para carregar dados de exemplo típicos de enfesto
   const loadSampleData = () => {
     const sampleItems: ProductionItem[] = [
-      { id: '1', referencia: 'REF001', cor: 'Azul', tamanho: 'M', qtd: 150, qtd_otimizada: 0, diferenca: 0, editavel: true },
-      { id: '2', referencia: 'REF002', cor: 'Vermelho', tamanho: 'G', qtd: 200, qtd_otimizada: 0, diferenca: 0, editavel: true },
-      { id: '3', referencia: 'REF003', cor: 'Verde', tamanho: 'P', qtd: 120, qtd_otimizada: 0, diferenca: 0, editavel: true },
-      { id: '4', referencia: 'REF004', cor: 'Preto', tamanho: 'GG', qtd: 80, qtd_otimizada: 0, diferenca: 0, editavel: true },
-      { id: '5', referencia: 'REF005', cor: 'Branco', tamanho: 'M', qtd: 50, qtd_otimizada: 0, diferenca: 0, editavel: true }
+      { id: '1', referencia: 'CAM001', cor: 'Azul Marinho', tamanho: 'P', qtd: 47, qtd_otimizada: 0, diferenca: 0, editavel: true },
+      { id: '2', referencia: 'CAM001', cor: 'Azul Marinho', tamanho: 'M', qtd: 163, qtd_otimizada: 0, diferenca: 0, editavel: true },
+      { id: '3', referencia: 'CAM001', cor: 'Azul Marinho', tamanho: 'G', qtd: 122, qtd_otimizada: 0, diferenca: 0, editavel: true },
+      { id: '4', referencia: 'CAM001', cor: 'Azul Marinho', tamanho: 'GG', qtd: 38, qtd_otimizada: 0, diferenca: 0, editavel: true },
+      { id: '5', referencia: 'CAM001', cor: 'Branco', tamanho: 'P', qtd: 23, qtd_otimizada: 0, diferenca: 0, editavel: true },
+      { id: '6', referencia: 'CAM001', cor: 'Branco', tamanho: 'M', qtd: 89, qtd_otimizada: 0, diferenca: 0, editavel: true },
+      { id: '7', referencia: 'CAM001', cor: 'Branco', tamanho: 'G', qtd: 67, qtd_otimizada: 0, diferenca: 0, editavel: true },
+      { id: '8', referencia: 'CAM001', cor: 'Branco', tamanho: 'GG', qtd: 19, qtd_otimizada: 0, diferenca: 0, editavel: true },
+      { id: '9', referencia: 'VEST002', cor: 'Preto', tamanho: 'M', qtd: 234, qtd_otimizada: 0, diferenca: 0, editavel: true },
+      { id: '10', referencia: 'VEST002', cor: 'Preto', tamanho: 'G', qtd: 156, qtd_otimizada: 0, diferenca: 0, editavel: true }
     ];
     
     setItems(sampleItems);
     setOptimizedItems([]);
     setError(null);
-    setSuccess('Dados de exemplo carregados!');
+    setSuccess('Exemplo de dados de enfesto carregado! Estes são valores típicos encontrados na indústria têxtil.');
   };
 
   return (
     <div className="bg-white shadow rounded-lg p-6">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">Otimização de Corte</h2>
+      <h2 className="text-2xl font-bold text-gray-800 mb-6">Otimização de Enfesto de Corte</h2>
       
       {/* Controles */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
@@ -247,10 +252,10 @@ export const ProductionOptimizer: React.FC = () => {
           <div className="bg-blue-50 p-4 rounded-lg">
             <h3 className="font-medium text-blue-800 mb-2">Instruções</h3>
             <ul className="text-sm text-blue-700 list-disc pl-5 space-y-1">
-              <li>Faça upload de um arquivo Excel com os dados de produção</li>
-              <li>Ajuste a tolerância conforme necessário</li>
-              <li>Clique em "Otimizar" para processar os dados</li>
-              <li>Salve os resultados otimizados</li>
+              <li>Faça upload de uma planilha Excel com dados de corte (referência, cor, tamanho, qtd)</li>
+              <li>O sistema otimiza quantidades para enfesto eficiente (múltiplos ideais, menos repetições)</li>
+              <li>Ajuste a tolerância para flexibilidade nas otimizações</li>
+              <li>Baseado em padrões históricos de analistas experientes</li>
             </ul>
           </div>
         </div>
