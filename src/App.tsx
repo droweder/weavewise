@@ -6,7 +6,6 @@ import { realApiService } from './services/realApiService';
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     // Verificar se o usuário já está autenticado
@@ -15,8 +14,7 @@ function App() {
         const authenticated = await realApiService.isAuthenticated();
         setIsAuthenticated(authenticated);
       } catch (error) {
-        console.warn('Auth check failed, continuing with mock mode:', error);
-        setError('Modo demonstração - Supabase não configurado');
+        console.error('Erro ao verificar autenticação:', error);
       } finally {
         setLoading(false);
       }
@@ -29,16 +27,17 @@ function App() {
       try {
         const { data: authListener } = realApiService.supabase.auth.onAuthStateChange(
           (event, session) => {
+            console.log('Auth state changed:', event, session);
             setIsAuthenticated(!!session?.user);
           }
         );
 
         // Cleanup listener
         return () => {
-          authListener?.subscription?.unsubscribe();
+          authListener.subscription.unsubscribe();
         };
       } catch (error) {
-        console.warn('Auth listener failed:', error);
+        console.error('Erro ao inicializar listener de autenticação:', error);
       }
     };
 
@@ -50,7 +49,6 @@ function App() {
 
   const handleAuthSuccess = () => {
     setIsAuthenticated(true);
-    setError(null);
   };
 
   const handleLogout = async () => {
@@ -58,7 +56,7 @@ function App() {
       await realApiService.logout();
       setIsAuthenticated(false);
     } catch (error) {
-      console.warn('Logout error:', error);
+      console.error('Erro ao fazer logout:', error);
     }
   };
 
@@ -72,15 +70,6 @@ function App() {
 
   return (
     <div className="App">
-      {error && (
-        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
-          <div className="flex">
-            <div className="ml-3">
-              <p className="text-sm text-yellow-700">{error}</p>
-            </div>
-          </div>
-        </div>
-      )}
       {isAuthenticated ? (
         <Layout onLogout={handleLogout} />
       ) : (

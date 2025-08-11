@@ -391,14 +391,9 @@ class RealApiService {
       const { data: { user } } = await supabase.auth.getUser();
       return !!user;
     } catch (error) {
-      console.warn('Auth check failed:', error);
+      console.error('Erro ao verificar autenticação:', error);
       return false;
     }
-  }
-
-  // Função para verificar se o Supabase está configurado
-  isSupabaseConfigured() {
-    return !!(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
   }
 }
 
