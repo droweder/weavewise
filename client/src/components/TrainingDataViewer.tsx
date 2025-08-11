@@ -8,6 +8,43 @@ export const TrainingDataViewer: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
 
+  // Função auxiliar para calcular MDC
+  const gcd = (a: number, b: number): number => {
+    return b === 0 ? a : gcd(b, a % b);
+  };
+
+  // Função para calcular MDC de múltiplos números
+  const gcdMultiple = (numbers: number[]): number => {
+    if (numbers.length === 0) return 1;
+    if (numbers.length === 1) return numbers[0];
+    
+    let result = numbers[0];
+    for (let i = 1; i < numbers.length; i++) {
+      result = gcd(result, numbers[i]);
+    }
+    return result;
+  };
+
+  // Função para detectar camadas por referência+cor usando MDC
+  const detectLayers = (data: any[], referencia: string, cor: string): number => {
+    const quantities = data
+      .filter(item => item.referencia === referencia && item.cor === cor)
+      .map(item => parseInt(item.qtd_otimizada) || parseInt(item.qtd) || 0)
+      .filter(qtd => qtd > 0);
+    
+    if (quantities.length === 0) return 36;
+    if (quantities.length === 1) return quantities[0] > 36 ? 36 : quantities[0];
+    
+    const mdc = gcdMultiple(quantities);
+    
+    // Validar se o MDC faz sentido (entre 6 e 60)
+    if (mdc >= 6 && mdc <= 60) {
+      return mdc;
+    }
+    
+    return 36; // Default
+  };
+
   // Função para ordenar cabeçalhos na ordem desejada: Referência, Tamanho, Cor, Quantidade...
   const getOrderedHeaders = (item: any) => {
     const allHeaders = Object.keys(item);
@@ -31,8 +68,11 @@ export const TrainingDataViewer: React.FC = () => {
       }
     });
     
+    // Adicionar colunas calculadas
+    result.push('camadas', 'repeticoes');
+    
     // Adicionar outros cabeçalhos que não estão na lista ordenada
-    const usedHeaders = new Set(result);
+    const usedHeaders = new Set([...result, ...orderedHeadersOptions.flat()]);
     const remainingHeaders = allHeaders.filter(header => !usedHeaders.has(header));
     
     return [...result, ...remainingHeaders];
@@ -57,9 +97,31 @@ export const TrainingDataViewer: React.FC = () => {
       'qtd_otimizada': 'QTD_OTIMIZADA',
       'Qtd_otimizada': 'QTD_OTIMIZADA',
       'QTD_OTIMIZADA': 'QTD_OTIMIZADA',
-      'qtd otimizada': 'QTD_OTIMIZADA'
+      'qtd otimizada': 'QTD_OTIMIZADA',
+      'camadas': 'CAMADAS',
+      'repeticoes': 'REPETIÇÕES'
     };
     return fieldMap[fieldName] || fieldName.toUpperCase();
+  };
+
+  // Função para obter valor de uma célula (incluindo cálculos)
+  const getCellValue = (item: any, header: string) => {
+    if (header === 'camadas') {
+      const referencia = item.referencia || item.Referência || item.REFERENCIA || '';
+      const cor = item.cor || item.Cor || item.COR || '';
+      return detectLayers(trainingData, referencia, cor);
+    }
+    
+    if (header === 'repeticoes') {
+      const qtdOtimizada = parseInt(item.qtd_otimizada || item.Qtd_otimizada || item.QTD_OTIMIZADA || item.qtd || 0);
+      const referencia = item.referencia || item.Referência || item.REFERENCIA || '';
+      const cor = item.cor || item.Cor || item.COR || '';
+      const camadas = detectLayers(trainingData, referencia, cor);
+      
+      return camadas > 0 ? Math.round(qtdOtimizada / camadas) : 1;
+    }
+    
+    return item[header] || '';
   };
 
   useEffect(() => {
@@ -108,7 +170,7 @@ export const TrainingDataViewer: React.FC = () => {
       displayHeaders.join(','),
       ...trainingData.map(item => 
         headers.map(header => 
-          `"${String(item[header]).replace(/"/g, '""')}"`
+          `"${String(getCellValue(item, header)).replace(/"/g, '""')}"`
         ).join(',')
       )
     ].join('\n');
@@ -196,7 +258,9 @@ export const TrainingDataViewer: React.FC = () => {
                 <tr key={index} className="hover:bg-gray-50">
                   {getOrderedHeaders(item).map((header, i) => (
                     <td key={i} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {String(item[header])}
+                      <span className={header === 'camadas' || header === 'repeticoes' ? 'font-semibold text-blue-600' : ''}>
+                        {String(getCellValue(item, header))}
+                      </span>
                     </td>
                   ))}
                 </tr>

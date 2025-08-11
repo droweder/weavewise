@@ -112,7 +112,7 @@ export const OptimizationResults: React.FC<OptimizationResultsProps> = ({
                 Qtd Otimizada
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Camadas
+                Repetições
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Diferença
@@ -168,7 +168,9 @@ export const OptimizationResults: React.FC<OptimizationResultsProps> = ({
                   )}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {Math.round((item.qtd_otimizada || item.qtd) / Math.max(1, detectLayers(item.qtd_otimizada || item.qtd)))}
+                  <span className="font-semibold text-blue-600">
+                    {Math.round((item.qtd_otimizada || item.qtd) / Math.max(1, detectLayers(item.qtd_otimizada || item.qtd)))}
+                  </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm">
                   <span className={

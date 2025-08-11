@@ -118,8 +118,12 @@ class RealApiService {
       confidence = Math.min(exactPattern.count / 3, 1.0);
       factors.push(`PADRÃO EXATO: ${exactPattern.count} exemplos`);
       
-      // Detectar camadas baseado nos dados do analista
-      layers = this.detectLayers(exactPattern.avgOptimizedQtd);
+      // Detectar camadas usando MDC dos dados históricos da referência+cor
+      layers = this.detectLayersFromData(
+        modelWeights.trainingData || [], 
+        item.referencia, 
+        item.cor
+      );
     }
     
     // PRIORIDADE 2: Buscar padrões por referência+cor (mesmo produto, cores diferentes)
@@ -133,7 +137,11 @@ class RealApiService {
           optimizedQuantity = closestExample.qtd_otimizada;
           confidence = 0.8;
           factors.push(`REF+COR: ${pattern.count} exemplos (tamanho similar)`);
-          layers = this.detectLayers(optimizedQuantity);
+          layers = this.detectLayersFromData(
+            modelWeights.trainingData || [], 
+            item.referencia, 
+            item.cor
+          );
         }
       }
     }
@@ -155,7 +163,11 @@ class RealApiService {
         optimizedQuantity = Math.round(item.qtd * ratio);
         confidence = refPattern.confidence * 0.5;
         factors.push(`REF "${item.referencia}": ajuste ${((ratio - 1) * 100).toFixed(1)}%`);
-        layers = this.detectLayers(optimizedQuantity);
+        layers = this.detectLayersFromData(
+          modelWeights.trainingData || [], 
+          item.referencia, 
+          item.cor
+        );
       }
     }
     
@@ -173,7 +185,11 @@ class RealApiService {
       optimizedQuantity = item.qtd;
       confidence = 0.0;
       factors.push('Sem padrão histórico - mantendo quantidade original');
-      layers = this.detectLayers(optimizedQuantity);
+      layers = this.detectLayersFromData(
+        modelWeights.trainingData || [], 
+        item.referencia, 
+        item.cor
+      );
     }
 
     // Aplicar tolerância respeitando múltiplos das camadas
@@ -198,7 +214,46 @@ class RealApiService {
     };
   }
 
-  // Detectar número de camadas baseado em múltiplos comuns
+  // Calcular MDC (Máximo Divisor Comum) entre dois números
+  private gcd(a: number, b: number): number {
+    return b === 0 ? a : this.gcd(b, a % b);
+  }
+
+  // Calcular MDC de uma lista de números
+  private gcdMultiple(numbers: number[]): number {
+    if (numbers.length === 0) return 1;
+    if (numbers.length === 1) return numbers[0];
+    
+    let result = numbers[0];
+    for (let i = 1; i < numbers.length; i++) {
+      result = this.gcd(result, numbers[i]);
+    }
+    return result;
+  }
+
+  // Detectar camadas baseado no MDC das quantidades da mesma referência+cor
+  private detectLayersFromData(data: any[], referencia: string, cor: string): number {
+    // Buscar todas as quantidades otimizadas para a mesma referência+cor
+    const quantities = data
+      .filter(item => item.referencia === referencia && item.cor === cor)
+      .map(item => item.qtd_otimizada);
+    
+    if (quantities.length === 0) return 36; // Default
+    if (quantities.length === 1) return this.detectLayers(quantities[0]);
+    
+    // Calcular MDC entre todas as quantidades
+    const mdc = this.gcdMultiple(quantities);
+    
+    // Validar se o MDC faz sentido como número de camadas (entre 6 e 60)
+    if (mdc >= 6 && mdc <= 60) {
+      return mdc;
+    }
+    
+    // Se MDC não faz sentido, usar detecção individual
+    return this.detectLayers(quantities[0]);
+  }
+
+  // Detectar número de camadas baseado em múltiplos comuns (fallback)
   private detectLayers(quantity: number): number {
     const commonLayers = [12, 18, 24, 30, 36, 42, 48]; // Camadas típicas na indústria têxtil
     
@@ -492,6 +547,9 @@ class RealApiService {
       // Análise de camadas (CRUCIAL para enfesto)
       globalLayerPattern: layerAnalysis.globalPattern,
       referenceLayerPatterns: layerAnalysis.referencePatterns,
+      
+      // Manter dados de treinamento para cálculos de MDC
+      trainingData: cleanedData,
       
       // Modelos matemáticos
       linearRegression,
