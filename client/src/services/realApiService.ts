@@ -572,6 +572,43 @@ class RealApiService {
     };
   }
 
+  private analyzeReferenceColorPatterns(data: any[]) {
+    const patterns: Record<string, any> = {};
+    
+    // Agrupar por referência+cor
+    data.forEach(item => {
+      const key = `${item.referencia}-${item.cor}`;
+      
+      if (!patterns[key]) {
+        patterns[key] = {
+          examples: [],
+          count: 0,
+          quantities: [],
+          avgOptimizedQtd: 0,
+          mdc: 0
+        };
+      }
+      
+      patterns[key].examples.push(item);
+      patterns[key].count++;
+      patterns[key].quantities.push(item.qtd_otimizada);
+    });
+    
+    // Calcular MDC e médias para cada padrão
+    Object.keys(patterns).forEach(key => {
+      const pattern = patterns[key];
+      pattern.mdc = this.gcdMultiple(pattern.quantities);
+      pattern.avgOptimizedQtd = pattern.quantities.reduce((a: number, b: number) => a + b, 0) / pattern.quantities.length;
+      
+      // Validar se MDC é um valor razoável para camadas
+      if (pattern.mdc < 6 || pattern.mdc > 60) {
+        pattern.mdc = this.detectLayers(pattern.avgOptimizedQtd);
+      }
+    });
+    
+    return patterns;
+  }
+
   private analyzeExactPatterns(data: any[]) {
     const patterns: Record<string, any> = {};
     
@@ -623,65 +660,49 @@ class RealApiService {
     return patterns;
   }
 
-  private analyzeReferenceColorPatterns(data: any[]) {
-    const patterns: Record<string, any> = {};
-    
-    // Agrupar por combinação de referência+cor
-    data.forEach((item: any) => {
-      const key = `${item.referencia}-${item.cor}`;
-      
-      if (!patterns[key]) {
-        patterns[key] = {
-          referencia: item.referencia,
-          cor: item.cor,
-          examples: [],
-          totalOriginal: 0,
-          totalOptimized: 0,
-          count: 0
-        };
-      }
-      
-      patterns[key].examples.push(item);
-      patterns[key].totalOriginal += item.qtd;
-      patterns[key].totalOptimized += item.qtd_otimizada;
-      patterns[key].count++;
-    });
-    
-    // Calcular estatísticas para cada padrão referência+cor
-    Object.keys(patterns).forEach(key => {
-      const pattern = patterns[key];
-      pattern.avgOriginalQtd = pattern.totalOriginal / pattern.count;
-      pattern.avgOptimizedQtd = pattern.totalOptimized / pattern.count;
-      pattern.avgAdjustmentRatio = pattern.avgOptimizedQtd / pattern.avgOriginalQtd;
-      pattern.confidence = Math.min(pattern.count / 5, 1.0);
-      
-      // Manter exemplos para busca de tamanhos similares
-      // Não excluir examples aqui, diferente dos outros padrões
-    });
-    
-    return patterns;
-  }
-
   private analyzeLayers(data: any[]) {
     const layerCounts: Record<number, number> = {};
     const referenceLayerPatterns: Record<string, any> = {};
+    const referenceColorGroups: Record<string, any[]> = {};
     
-    // Analisar camadas por item
+    // Agrupar dados por referência+cor para calcular MDC
     data.forEach((item: any) => {
-      const layers = this.detectLayers(item.qtd_otimizada);
-      layerCounts[layers] = (layerCounts[layers] || 0) + 1;
+      const key = `${item.referencia}-${item.cor}`;
+      if (!referenceColorGroups[key]) {
+        referenceColorGroups[key] = [];
+      }
+      referenceColorGroups[key].push(item);
+    });
+    
+    // Calcular MDC para cada grupo referência+cor
+    Object.keys(referenceColorGroups).forEach(key => {
+      const items = referenceColorGroups[key];
+      const [referencia] = key.split('-');
+      
+      // Coletar todas as quantidades otimizadas do grupo
+      const quantities = items.map(item => item.qtd_otimizada);
+      
+      // Calcular MDC das quantidades
+      const mdc = this.gcdMultiple(quantities);
+      
+      // Validar se o MDC faz sentido como camadas (entre 6 e 60)
+      const layers = (mdc >= 6 && mdc <= 60) ? mdc : this.detectLayers(quantities[0]);
+      
+      // Registrar o padrão de camadas
+      layerCounts[layers] = (layerCounts[layers] || 0) + items.length;
       
       // Agrupar por referência
-      if (!referenceLayerPatterns[item.referencia]) {
-        referenceLayerPatterns[item.referencia] = {
+      if (!referenceLayerPatterns[referencia]) {
+        referenceLayerPatterns[referencia] = {
           layerCounts: {},
-          totalItems: 0
+          totalItems: 0,
+          layerPattern: null
         };
       }
       
-      const refPattern = referenceLayerPatterns[item.referencia];
-      refPattern.layerCounts[layers] = (refPattern.layerCounts[layers] || 0) + 1;
-      refPattern.totalItems++;
+      const refPattern = referenceLayerPatterns[referencia];
+      refPattern.layerCounts[layers] = (refPattern.layerCounts[layers] || 0) + items.length;
+      refPattern.totalItems += items.length;
     });
     
     // Encontrar camadas mais comuns globalmente
@@ -804,9 +825,9 @@ class RealApiService {
     if (cleanedData.length > 0) {
       console.log('Exemplo de item limpo:', cleanedData[0]);
       // Mostrar alguns padrões encontrados
-      const referencias = [...new Set(cleanedData.map(item => item.referencia))];
-      const cores = [...new Set(cleanedData.map(item => item.cor))];
-      const tamanhos = [...new Set(cleanedData.map(item => item.tamanho))];
+      const referencias = Array.from(new Set(cleanedData.map(item => item.referencia)));
+      const cores = Array.from(new Set(cleanedData.map(item => item.cor)));
+      const tamanhos = Array.from(new Set(cleanedData.map(item => item.tamanho)));
       
       console.log('Referências encontradas:', referencias.slice(0, 5));
       console.log('Cores encontradas:', cores.slice(0, 5)); 
