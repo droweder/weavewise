@@ -19,6 +19,12 @@ export const TrainingHistory: React.FC = () => {
   const [showTrainingData, setShowTrainingData] = useState(false);
   const [showModelComparison, setShowModelComparison] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteModal, setDeleteModal] = useState<{ show: boolean; type: 'training' | 'optimization'; id: string; title?: string }>({ 
+    show: false, 
+    type: 'training', 
+    id: '',
+    title: '' 
+  });
 
   useEffect(() => {
     const fetchData = async () => {
@@ -76,24 +82,49 @@ export const TrainingHistory: React.FC = () => {
   };
 
   const handleDeleteTraining = async (trainingId: string) => {
-    if (!confirm('Tem certeza que deseja excluir este treinamento? Esta ação não pode ser desfeita.')) {
-      return;
-    }
+    setDeleteModal({ 
+      show: true, 
+      type: 'training', 
+      id: trainingId,
+      title: 'Excluir Treinamento'
+    });
+  };
 
-    setDeletingId(trainingId);
+  const handleDeleteOptimization = async (optimizationId: string) => {
+    setDeleteModal({ 
+      show: true, 
+      type: 'optimization', 
+      id: optimizationId,
+      title: 'Excluir Otimização'
+    });
+  };
+
+  const confirmDelete = async () => {
+    setDeletingId(deleteModal.id);
     try {
-      await realApiService.deleteTraining(trainingId);
-      
-      // Refresh training history after deletion
-      const history = await realApiService.getTrainingHistory();
-      setTrainingHistory(history);
+      if (deleteModal.type === 'training') {
+        await realApiService.deleteTraining(deleteModal.id);
+        // Refresh training history
+        const history = await realApiService.getTrainingHistory();
+        setTrainingHistory(history);
+      } else {
+        await realApiService.deleteOptimization(deleteModal.id);
+        // Refresh optimization logs
+        const logs = await realApiService.getOptimizationLogs();
+        setOptimizationLogs(logs);
+      }
       
       setError(null);
+      setDeleteModal({ show: false, type: 'training', id: '', title: '' });
     } catch (err) {
-      setError('Erro ao excluir treinamento: ' + (err as Error).message);
+      setError(`Erro ao excluir ${deleteModal.type === 'training' ? 'treinamento' : 'otimização'}: ` + (err as Error).message);
     } finally {
       setDeletingId(null);
     }
+  };
+
+  const cancelDelete = () => {
+    setDeleteModal({ show: false, type: 'training', id: '', title: '' });
   };
 
   const formatDate = (dateString: string) => {
@@ -319,6 +350,9 @@ export const TrainingHistory: React.FC = () => {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Resumo
                     </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Ações
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -349,6 +383,20 @@ export const TrainingHistory: React.FC = () => {
                           </span>
                         </div>
                       </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <button
+                          onClick={() => handleDeleteOptimization(log.id)}
+                          disabled={deletingId === log.id}
+                          className="text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                          title="Excluir otimização"
+                        >
+                          {deletingId === log.id ? (
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600"></div>
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -356,6 +404,56 @@ export const TrainingHistory: React.FC = () => {
             </div>
           )}
         </div>
+
+        {/* Modal de Confirmação de Exclusão */}
+        {deleteModal.show && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+              <div className="p-6">
+                <div className="flex items-center mb-4">
+                  <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
+                    <Trash2 className="h-6 w-6 text-red-600" />
+                  </div>
+                </div>
+                
+                <div className="text-center">
+                  <h3 className="text-lg leading-6 font-medium text-gray-900 mb-2">
+                    {deleteModal.title}
+                  </h3>
+                  <div className="mt-2">
+                    <p className="text-sm text-gray-500">
+                      Tem certeza que deseja excluir {deleteModal.type === 'training' ? 'este treinamento' : 'esta otimização'}? 
+                      Esta ação não pode ser desfeita.
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="mt-6 flex space-x-4">
+                  <button
+                    onClick={cancelDelete}
+                    className="flex-1 bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={confirmDelete}
+                    disabled={deletingId === deleteModal.id}
+                    className="flex-1 bg-red-600 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                  >
+                    {deletingId === deleteModal.id ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Excluindo...
+                      </>
+                    ) : (
+                      'Excluir'
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

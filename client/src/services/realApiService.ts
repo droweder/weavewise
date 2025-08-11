@@ -924,6 +924,30 @@ class RealApiService {
       throw error;
     }
   }
+
+  async deleteOptimization(optimizationId: string): Promise<void> {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Usuário não autenticado');
+
+      // Excluir log de otimização
+      const { error } = await supabase
+        .from('optimization_logs')
+        .delete()
+        .eq('id', optimizationId)
+        .eq('user_id', user.id);
+
+      if (error) {
+        console.error('Erro ao excluir otimização:', error);
+        throw new Error('Erro ao excluir otimização: ' + error.message);
+      }
+
+      console.log('Otimização excluída com sucesso:', optimizationId);
+    } catch (error) {
+      console.error('Erro ao excluir otimização:', error);
+      throw error;
+    }
+  }
 }
 
 export const realApiService = new RealApiService();
