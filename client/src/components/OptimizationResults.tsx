@@ -2,6 +2,25 @@ import React, { useState } from 'react';
 import { ProductionItem } from '../types';
 import { Save, X } from 'lucide-react';
 
+// Função auxiliar para detectar camadas
+const detectLayers = (quantity: number): number => {
+  const commonLayers = [12, 18, 24, 30, 36, 42, 48];
+  
+  for (const layers of commonLayers) {
+    if (quantity % layers === 0) {
+      return layers;
+    }
+  }
+  
+  for (let i = 60; i >= 6; i--) {
+    if (quantity % i === 0) {
+      return i;
+    }
+  }
+  
+  return Math.max(1, Math.round(quantity / 36));
+};
+
 interface OptimizationResultsProps {
   items: ProductionItem[];
   onItemUpdate: (updatedItems: ProductionItem[]) => void;
@@ -93,6 +112,9 @@ export const OptimizationResults: React.FC<OptimizationResultsProps> = ({
                 Qtd Otimizada
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Camadas
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Diferença
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -144,6 +166,9 @@ export const OptimizationResults: React.FC<OptimizationResultsProps> = ({
                       {item.qtd_otimizada}
                     </span>
                   )}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {Math.round((item.qtd_otimizada || item.qtd) / Math.max(1, detectLayers(item.qtd_otimizada || item.qtd)))}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm">
                   <span className={

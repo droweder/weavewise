@@ -102,108 +102,131 @@ class RealApiService {
 
   private predictOptimalQuantity(item: ProductionItem, modelWeights: any, tolerance: number) {
     // Predição baseada EXCLUSIVAMENTE nos padrões históricos do analista
-    let baseQuantity = item.qtd; // Quantidade base para cálculos
-    let totalAdjustmentFactor = 1.0; // Fator de ajuste cumulativo
+    // CRUCIAL: Detectar automaticamente o número de camadas de tecido dos dados
+    
+    let optimizedQuantity = item.qtd;
     let confidence = 0.0;
-    const factors = [];
-    let patternCount = 0;
-    let exactPatterns = [];
+    let factors = [];
+    let layers = 0;
 
     // PRIORIDADE 1: Buscar padrão EXATO (referencia + tamanho + cor)
     const exactKey = `${item.referencia}-${item.tamanho}-${item.cor}`;
     if (modelWeights.exactPatterns && modelWeights.exactPatterns[exactKey]) {
       const exactPattern = modelWeights.exactPatterns[exactKey];
-      // Para padrões exatos, usar diretamente a média das otimizações do analista
-      const avgOptimized = exactPattern.totalOptimized / exactPattern.count;
-      const avgOriginal = exactPattern.totalOriginal / exactPattern.count;
-      const ratio = avgOptimized / avgOriginal;
+      // Para padrões exatos, usar diretamente os valores otimizados do analista
+      optimizedQuantity = Math.round(exactPattern.avgOptimizedQtd);
+      confidence = Math.min(exactPattern.count / 3, 1.0);
+      factors.push(`PADRÃO EXATO: ${exactPattern.count} exemplos`);
       
-      totalAdjustmentFactor = ratio;
-      confidence = Math.min(exactPattern.count / 5, 1.0); // Alta confiança para padrões exatos
-      factors.push(`PADRÃO EXATO: ${exactPattern.count} exemplos - Média: ${avgOptimized.toFixed(1)}`);
-      patternCount++;
+      // Detectar camadas baseado nos dados do analista
+      layers = this.detectLayers(exactPattern.avgOptimizedQtd);
     }
-
-    // PRIORIDADE 2: Padrão por referência (se não houver padrão exato)
-    if (patternCount === 0 && modelWeights.referencePatterns && modelWeights.referencePatterns[item.referencia]) {
+    
+    // PRIORIDADE 2: Buscar padrões por referência+cor (mesmo produto, cores diferentes)
+    else if (modelWeights.referenceColorPatterns) {
+      const refColorKey = `${item.referencia}-${item.cor}`;
+      if (modelWeights.referenceColorPatterns[refColorKey]) {
+        const pattern = modelWeights.referenceColorPatterns[refColorKey];
+        // Buscar o tamanho mais próximo nos dados do analista
+        const closestExample = this.findClosestSizeExample(item, pattern.examples);
+        if (closestExample) {
+          optimizedQuantity = closestExample.qtd_otimizada;
+          confidence = 0.8;
+          factors.push(`REF+COR: ${pattern.count} exemplos (tamanho similar)`);
+          layers = this.detectLayers(optimizedQuantity);
+        }
+      }
+    }
+    
+    // PRIORIDADE 3: Detectar padrão de camadas por referência
+    if (confidence < 0.7 && modelWeights.referencePatterns && modelWeights.referencePatterns[item.referencia]) {
       const refPattern = modelWeights.referencePatterns[item.referencia];
-      totalAdjustmentFactor *= refPattern.avgAdjustmentRatio;
-      confidence += refPattern.confidence * 0.6;
-      factors.push(`REF "${item.referencia}": ${((refPattern.avgAdjustmentRatio - 1) * 100).toFixed(1)}% (${refPattern.count} exemplos)`);
-      patternCount++;
-    }
-
-    // PRIORIDADE 3: Padrão por tamanho (complementar)
-    if (modelWeights.sizePatterns && modelWeights.sizePatterns[item.tamanho]) {
-      const sizePattern = modelWeights.sizePatterns[item.tamanho];
-      const sizeWeight = patternCount === 0 ? 0.5 : 0.3; // Peso menor se já houver outros padrões
-      const sizeAdjustment = 1 + (sizePattern.avgAdjustmentRatio - 1) * sizeWeight;
       
-      totalAdjustmentFactor *= sizeAdjustment;
-      confidence += sizePattern.confidence * 0.25;
-      factors.push(`TAM "${item.tamanho}": ${((sizeAdjustment - 1) * 100).toFixed(1)}% (${sizePattern.count} exemplos)`);
-      patternCount++;
+      // Analisar múltiplos comuns nos dados da referência para detectar camadas
+      if (refPattern.layerPattern) {
+        const targetLayers = refPattern.layerPattern.mostCommonLayers;
+        optimizedQuantity = this.adjustToLayers(item.qtd, targetLayers);
+        confidence = 0.6;
+        factors.push(`REF "${item.referencia}": ${targetLayers} camadas detectadas`);
+        layers = targetLayers;
+      } else {
+        // Aplicar ajuste proporcional baseado nos dados históricos
+        const ratio = refPattern.avgAdjustmentRatio;
+        optimizedQuantity = Math.round(item.qtd * ratio);
+        confidence = refPattern.confidence * 0.5;
+        factors.push(`REF "${item.referencia}": ajuste ${((ratio - 1) * 100).toFixed(1)}%`);
+        layers = this.detectLayers(optimizedQuantity);
+      }
+    }
+    
+    // PRIORIDADE 4: Usar padrão global de camadas se detectado
+    if (confidence < 0.5 && modelWeights.globalLayerPattern) {
+      const globalLayers = modelWeights.globalLayerPattern.mostCommonLayers;
+      optimizedQuantity = this.adjustToLayers(item.qtd, globalLayers);
+      confidence = 0.3;
+      factors.push(`Padrão global: ${globalLayers} camadas`);
+      layers = globalLayers;
     }
 
-    // PRIORIDADE 4: Padrão por cor (complementar)
-    if (modelWeights.colorPatterns && modelWeights.colorPatterns[item.cor]) {
-      const colorPattern = modelWeights.colorPatterns[item.cor];
-      const colorWeight = patternCount === 0 ? 0.4 : 0.2;
-      const colorAdjustment = 1 + (colorPattern.avgAdjustmentRatio - 1) * colorWeight;
-      
-      totalAdjustmentFactor *= colorAdjustment;
-      confidence += colorPattern.confidence * 0.2;
-      factors.push(`COR "${item.cor}": ${((colorAdjustment - 1) * 100).toFixed(1)}% (${colorPattern.count} exemplos)`);
-      patternCount++;
-    }
-
-    // PRIORIDADE 5: Padrão por faixa de quantidade (apenas como ajuste fino)
-    const quantityRange = this.getQuantityRange(item.qtd);
-    if (modelWeights.quantityRangePatterns && modelWeights.quantityRangePatterns[quantityRange]) {
-      const rangePattern = modelWeights.quantityRangePatterns[quantityRange];
-      const rangeWeight = patternCount === 0 ? 0.3 : 0.1;
-      const rangeAdjustment = 1 + (rangePattern.avgAdjustmentRatio - 1) * rangeWeight;
-      
-      totalAdjustmentFactor *= rangeAdjustment;
-      confidence += rangePattern.confidence * 0.15;
-      factors.push(`Faixa ${quantityRange}: ${((rangeAdjustment - 1) * 100).toFixed(1)}% (${rangePattern.count} exemplos)`);
-      patternCount++;
-    }
-
-    // Calcular quantidade otimizada
-    let optimizedQuantity = Math.round(baseQuantity * totalAdjustmentFactor);
-
-    // Se não encontrou nenhum padrão, usar dados gerais do treinamento
-    if (patternCount === 0 && modelWeights.statistics) {
-      const globalRatio = modelWeights.statistics.avgAdjustmentRatio || 1.0;
-      optimizedQuantity = Math.round(baseQuantity * globalRatio);
-      confidence = 0.1;
-      factors.push(`Padrão geral: ${((globalRatio - 1) * 100).toFixed(1)}% (baseado em ${modelWeights.sample_size} exemplos)`);
-    }
-
-    // Se ainda não há padrões, manter quantidade original
-    if (patternCount === 0 && !modelWeights.statistics) {
-      optimizedQuantity = baseQuantity;
+    // Fallback: manter quantidade original
+    if (confidence < 0.2) {
+      optimizedQuantity = item.qtd;
       confidence = 0.0;
       factors.push('Sem padrão histórico - mantendo quantidade original');
+      layers = this.detectLayers(optimizedQuantity);
     }
 
-    // Aplicar tolerância apenas como variação final
-    if (tolerance > 0) {
+    // Aplicar tolerância respeitando múltiplos das camadas
+    if (tolerance > 0 && layers > 0) {
       const toleranceRange = tolerance / 100;
-      const randomFactor = 1 + (Math.random() - 0.5) * 2 * toleranceRange;
-      optimizedQuantity = Math.round(optimizedQuantity * randomFactor);
+      const variation = Math.round((Math.random() - 0.5) * 2 * toleranceRange * layers);
+      optimizedQuantity = Math.max(layers, optimizedQuantity + variation);
     }
 
-    // Garantir mínimo de 1
-    optimizedQuantity = Math.max(1, optimizedQuantity);
-    confidence = Math.min(confidence, 1.0);
+    // Garantir que seja múltiplo das camadas detectadas
+    if (layers > 0) {
+      optimizedQuantity = Math.round(optimizedQuantity / layers) * layers;
+    }
 
+    optimizedQuantity = Math.max(1, optimizedQuantity);
+    
     return {
       optimizedQuantity,
       confidence,
-      factors
+      factors,
+      layers: layers || this.detectLayers(optimizedQuantity)
     };
+  }
+
+  // Detectar número de camadas baseado em múltiplos comuns
+  private detectLayers(quantity: number): number {
+    const commonLayers = [12, 18, 24, 30, 36, 42, 48]; // Camadas típicas na indústria têxtil
+    
+    for (const layers of commonLayers) {
+      if (quantity % layers === 0) {
+        return layers;
+      }
+    }
+    
+    // Buscar o maior divisor entre 6 e 60
+    for (let i = 60; i >= 6; i--) {
+      if (quantity % i === 0) {
+        return i;
+      }
+    }
+    
+    return Math.max(1, Math.round(quantity / 36)); // Default: aproximar para múltiplo de 36
+  }
+
+  // Ajustar quantidade para múltiplo das camadas
+  private adjustToLayers(quantity: number, layers: number): number {
+    return Math.round(quantity / layers) * layers;
+  }
+
+  // Encontrar exemplo com tamanho mais próximo
+  private findClosestSizeExample(item: ProductionItem, examples: any[]): any | null {
+    // Implementação simples - retorna o primeiro exemplo para agora
+    return examples && examples.length > 0 ? examples[0] : null;
   }
 
 
@@ -422,11 +445,17 @@ class RealApiService {
     // PADRÕES EXATOS: Combinações específicas de referência+tamanho+cor
     const exactPatterns = this.analyzeExactPatterns(cleanedData);
     
+    // PADRÕES POR REFERÊNCIA+COR (crucial para enfesto)
+    const referenceColorPatterns = this.analyzeReferenceColorPatterns(cleanedData);
+    
     // Análise de padrões por categoria
     const referencePatterns = this.analyzePatternsByCategory(cleanedData, 'referencia');
     const colorPatterns = this.analyzePatternsByCategory(cleanedData, 'cor');
     const sizePatterns = this.analyzePatternsByCategory(cleanedData, 'tamanho');
     const quantityRangePatterns = this.analyzeQuantityRangePatterns(cleanedData);
+    
+    // ANÁLISE DE PADRÕES DE CAMADAS (NOVA FUNCIONALIDADE)
+    const layerAnalysis = this.analyzeLayers(cleanedData);
     
     // Treinamento de regressão linear
     const linearRegression = this.trainLinearRegression(cleanedData);
@@ -452,12 +481,17 @@ class RealApiService {
     return {
       // Padrões específicos (NOVA FUNCIONALIDADE)
       exactPatterns,
+      referenceColorPatterns,
       
       // Padrões por categoria
       referencePatterns,
       colorPatterns,
       sizePatterns,
       quantityRangePatterns,
+      
+      // Análise de camadas (CRUCIAL para enfesto)
+      globalLayerPattern: layerAnalysis.globalPattern,
+      referenceLayerPatterns: layerAnalysis.referencePatterns,
       
       // Modelos matemáticos
       linearRegression,
@@ -529,6 +563,92 @@ class RealApiService {
     });
     
     return patterns;
+  }
+
+  private analyzeReferenceColorPatterns(data: any[]) {
+    const patterns: Record<string, any> = {};
+    
+    // Agrupar por combinação de referência+cor
+    data.forEach((item: any) => {
+      const key = `${item.referencia}-${item.cor}`;
+      
+      if (!patterns[key]) {
+        patterns[key] = {
+          referencia: item.referencia,
+          cor: item.cor,
+          examples: [],
+          totalOriginal: 0,
+          totalOptimized: 0,
+          count: 0
+        };
+      }
+      
+      patterns[key].examples.push(item);
+      patterns[key].totalOriginal += item.qtd;
+      patterns[key].totalOptimized += item.qtd_otimizada;
+      patterns[key].count++;
+    });
+    
+    // Calcular estatísticas para cada padrão referência+cor
+    Object.keys(patterns).forEach(key => {
+      const pattern = patterns[key];
+      pattern.avgOriginalQtd = pattern.totalOriginal / pattern.count;
+      pattern.avgOptimizedQtd = pattern.totalOptimized / pattern.count;
+      pattern.avgAdjustmentRatio = pattern.avgOptimizedQtd / pattern.avgOriginalQtd;
+      pattern.confidence = Math.min(pattern.count / 5, 1.0);
+      
+      // Manter exemplos para busca de tamanhos similares
+      // Não excluir examples aqui, diferente dos outros padrões
+    });
+    
+    return patterns;
+  }
+
+  private analyzeLayers(data: any[]) {
+    const layerCounts: Record<number, number> = {};
+    const referenceLayerPatterns: Record<string, any> = {};
+    
+    // Analisar camadas por item
+    data.forEach((item: any) => {
+      const layers = this.detectLayers(item.qtd_otimizada);
+      layerCounts[layers] = (layerCounts[layers] || 0) + 1;
+      
+      // Agrupar por referência
+      if (!referenceLayerPatterns[item.referencia]) {
+        referenceLayerPatterns[item.referencia] = {
+          layerCounts: {},
+          totalItems: 0
+        };
+      }
+      
+      const refPattern = referenceLayerPatterns[item.referencia];
+      refPattern.layerCounts[layers] = (refPattern.layerCounts[layers] || 0) + 1;
+      refPattern.totalItems++;
+    });
+    
+    // Encontrar camadas mais comuns globalmente
+    const mostCommonLayers = Object.keys(layerCounts)
+      .map(layers => ({ layers: parseInt(layers), count: layerCounts[parseInt(layers)] }))
+      .sort((a, b) => b.count - a.count)[0];
+    
+    // Calcular padrão de camadas por referência
+    Object.keys(referenceLayerPatterns).forEach(ref => {
+      const pattern = referenceLayerPatterns[ref];
+      const mostCommon = Object.keys(pattern.layerCounts)
+        .map(layers => ({ layers: parseInt(layers), count: pattern.layerCounts[parseInt(layers)] }))
+        .sort((a, b) => b.count - a.count)[0];
+      
+      pattern.mostCommonLayers = mostCommon ? mostCommon.layers : 36;
+      pattern.confidence = mostCommon ? mostCommon.count / pattern.totalItems : 0;
+    });
+    
+    return {
+      globalPattern: {
+        mostCommonLayers: mostCommonLayers ? mostCommonLayers.layers : 36,
+        confidence: mostCommonLayers ? mostCommonLayers.count / data.length : 0
+      },
+      referencePatterns: referenceLayerPatterns
+    };
   }
   
   private validateAndCleanTrainingData(data: any[]) {
