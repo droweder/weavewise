@@ -18,27 +18,50 @@ const gcdMultiple = (numbers: number[]): number => {
   return result;
 };
 
-// Função para detectar camadas baseada na quantidade otimizada individual
+// Função para detectar camadas usando MDC por referência+cor nos resultados de otimização
 const detectLayers = (items: any[], currentItem: any): number => {
-  const quantity = currentItem.qtd_otimizada || currentItem.qtd;
+  const referencia = currentItem.referencia;
+  const cor = currentItem.cor;
   
-  if (quantity <= 0) return 36;
+  // Filtrar todos os itens da mesma referência+cor nos resultados
+  const sameRefCorItems = items.filter(item => 
+    item.referencia === referencia && item.cor === cor
+  );
   
+  if (sameRefCorItems.length === 0) return 36;
+  
+  // Coletar quantidades otimizadas do grupo
+  const quantities = sameRefCorItems
+    .map(item => item.qtd_otimizada || item.qtd)
+    .filter(qtd => qtd > 0);
+  
+  if (quantities.length === 0) return 36;
+  if (quantities.length === 1) {
+    const qtd = quantities[0];
+    const commonDivisors = [36, 48, 24, 30, 42, 18, 12];
+    for (const divisor of commonDivisors) {
+      if (qtd % divisor === 0) return divisor;
+    }
+    return 36;
+  }
+  
+  // Calcular MDC do grupo referência+cor
+  const mdc = gcdMultiple(quantities);
+  
+  // Validar MDC
+  if (mdc >= 6 && mdc <= 60) {
+    return mdc;
+  }
+  
+  // Fallback: buscar divisor comum
   const commonDivisors = [36, 48, 24, 30, 42, 18, 12];
   for (const divisor of commonDivisors) {
-    if (quantity % divisor === 0) {
+    if (quantities.every(qtd => qtd % divisor === 0)) {
       return divisor;
     }
   }
   
-  // Buscar o maior divisor entre 6 e 60
-  for (let i = 60; i >= 6; i--) {
-    if (quantity % i === 0) {
-      return i;
-    }
-  }
-  
-  return 36; // Default
+  return 36;
 };
 
 interface OptimizationResultsProps {

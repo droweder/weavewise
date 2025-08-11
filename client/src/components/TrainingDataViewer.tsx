@@ -25,51 +25,7 @@ export const TrainingDataViewer: React.FC = () => {
     return result;
   };
 
-  // Função para detectar camadas por referência+cor usando MDC
-  const detectLayers = (data: any[], referencia: string, cor: string): number => {
-    // Filtrar apenas itens da mesma referência+cor
-    const quantities = data
-      .filter(item => {
-        const itemRef = item.referencia || item.Referência || item.REFERENCIA || '';
-        const itemCor = item.cor || item.Cor || item.COR || '';
-        return itemRef === referencia && itemCor === cor;
-      })
-      .map(item => parseInt(item.qtd_otimizada || item.Qtd_otimizada || item.QTD_OTIMIZADA || item.qtd || item.Qtd || item.QTD) || 0)
-      .filter(qtd => qtd > 0);
-    
-    if (quantities.length === 0) {
-      return 36;
-    }
-    
-    if (quantities.length === 1) {
-      // Para um único valor, tentar dividir por valores comuns
-      const qtd = quantities[0];
-      const commonDivisors = [36, 48, 24, 30, 42, 18, 12];
-      for (const divisor of commonDivisors) {
-        if (qtd % divisor === 0) {
-          return divisor;
-        }
-      }
-      return 36;
-    }
-    
-    // Calcular MDC de múltiplas quantidades
-    const mdc = gcdMultiple(quantities);
-    
-    // Validar se o MDC faz sentido como número de camadas
-    if (mdc >= 6 && mdc <= 60) {
-      return mdc;
-    }
-    
-    // Se MDC muito pequeno, tentar encontrar um divisor comum maior
-    const commonDivisors = [36, 48, 24, 30, 42, 18, 12];
-    for (const divisor of commonDivisors) {
-      if (quantities.every(qtd => qtd % divisor === 0)) {
-        return divisor;
-      }
-    }
-    return 36;
-  };
+
 
   // Função para ordenar cabeçalhos na ordem desejada: Referência, Tamanho, Cor, Quantidade...
   const getOrderedHeaders = (item: any) => {
@@ -130,37 +86,64 @@ export const TrainingDataViewer: React.FC = () => {
     return fieldMap[fieldName] || fieldName.toUpperCase();
   };
 
-  // Função para detectar camadas baseada na quantidade individual
-  const detectLayersFromQuantity = (quantity: number): number => {
-    if (quantity <= 0) return 36;
+  // Função para detectar camadas usando MDC por referência+cor
+  const detectLayersForRefCor = (data: any[], referencia: string, cor: string): number => {
+    // Filtrar itens da mesma referência+cor
+    const sameRefCorItems = data.filter(item => {
+      const itemRef = item.referencia || item.Referência || item.REFERENCIA || '';
+      const itemCor = item.cor || item.Cor || item.COR || '';
+      return itemRef === referencia && itemCor === cor;
+    });
     
+    if (sameRefCorItems.length === 0) return 36;
+    
+    // Coletar todas as quantidades otimizadas (ou originais se não existir otimizada)
+    const quantities = sameRefCorItems
+      .map(item => parseInt(item.qtd_otimizada || item.Qtd_otimizada || item.QTD_OTIMIZADA || item.qtd || item.Qtd || item.QTD) || 0)
+      .filter(qtd => qtd > 0);
+    
+    if (quantities.length === 0) return 36;
+    if (quantities.length === 1) {
+      const qtd = quantities[0];
+      const commonDivisors = [36, 48, 24, 30, 42, 18, 12];
+      for (const divisor of commonDivisors) {
+        if (qtd % divisor === 0) return divisor;
+      }
+      return 36;
+    }
+    
+    // Calcular MDC de todas as quantidades do grupo
+    const mdc = gcdMultiple(quantities);
+    
+    // Validar se MDC faz sentido como camadas (entre 6 e 60)
+    if (mdc >= 6 && mdc <= 60) {
+      return mdc;
+    }
+    
+    // Fallback: buscar divisor comum
     const commonDivisors = [36, 48, 24, 30, 42, 18, 12];
     for (const divisor of commonDivisors) {
-      if (quantity % divisor === 0) {
+      if (quantities.every(qtd => qtd % divisor === 0)) {
         return divisor;
       }
     }
     
-    // Buscar o maior divisor entre 6 e 60
-    for (let i = 60; i >= 6; i--) {
-      if (quantity % i === 0) {
-        return i;
-      }
-    }
-    
-    return 36; // Default
+    return 36;
   };
 
   // Função para obter valor de uma célula (incluindo cálculos)
   const getCellValue = (item: any, header: string) => {
     if (header === 'camadas') {
-      const qtdOtimizada = parseInt(item.qtd_otimizada || item.Qtd_otimizada || item.QTD_OTIMIZADA || item.qtd || 0);
-      return detectLayersFromQuantity(qtdOtimizada);
+      const referencia = item.referencia || item.Referência || item.REFERENCIA || '';
+      const cor = item.cor || item.Cor || item.COR || '';
+      return detectLayersForRefCor(trainingData, referencia, cor);
     }
     
     if (header === 'repeticoes') {
       const qtdOtimizada = parseInt(item.qtd_otimizada || item.Qtd_otimizada || item.QTD_OTIMIZADA || item.qtd || 0);
-      const camadas = detectLayersFromQuantity(qtdOtimizada);
+      const referencia = item.referencia || item.Referência || item.REFERENCIA || '';
+      const cor = item.cor || item.Cor || item.COR || '';
+      const camadas = detectLayersForRefCor(trainingData, referencia, cor);
       
       return camadas > 0 ? Math.round(qtdOtimizada / camadas) : 1;
     }
