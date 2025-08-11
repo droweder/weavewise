@@ -69,20 +69,19 @@ class RealApiService {
   }
 
   private modelBasedOptimization(items: ProductionItem[], tolerance: number, modelWeights: any) {
-    // Esta é uma implementação simplificada
-    // Em um cenário real, você aplicaria os pesos do modelo para prever otimizações
     const optimizedItems = items.map(item => {
-      // Simular aplicação do modelo
-      const baseVariation = modelWeights.base_factor || 0.05;
-      const variation = (Math.random() - 0.5) * 2 * (tolerance / 100) + baseVariation;
-      const qtd_otimizada = Math.max(1, Math.round(item.qtd * (1 + variation)));
+      // Aplicar o modelo treinado para cada item
+      const prediction = this.predictOptimalQuantity(item, modelWeights, tolerance);
+      const qtd_otimizada = Math.max(1, Math.round(prediction.optimizedQuantity));
       const diferenca = qtd_otimizada - item.qtd;
       
       return {
         ...item,
         qtd_otimizada,
         diferenca,
-        editavel: true
+        editavel: true,
+        confidence: prediction.confidence,
+        factors: prediction.factors
       };
     });
 
@@ -90,7 +89,8 @@ class RealApiService {
       total_items: optimizedItems.length,
       increases: optimizedItems.filter(item => (item.diferenca || 0) > 0).length,
       decreases: optimizedItems.filter(item => (item.diferenca || 0) < 0).length,
-      unchanged: optimizedItems.filter(item => (item.diferenca || 0) === 0).length
+      unchanged: optimizedItems.filter(item => (item.diferenca || 0) === 0).length,
+      avg_confidence: optimizedItems.reduce((acc, item) => acc + (item.confidence || 0), 0) / optimizedItems.length
     };
 
     return {
@@ -98,6 +98,122 @@ class RealApiService {
       items: optimizedItems,
       summary
     };
+  }
+
+  private predictOptimalQuantity(item: ProductionItem, modelWeights: any, tolerance: number) {
+    // Aplicar algoritmo de predição baseado nos padrões aprendidos
+    const features = this.extractItemFeatures(item);
+    let optimizedQuantity = item.qtd;
+    let confidence = 0.5;
+    const factors = [];
+
+    // Aplicar regras aprendidas por referência
+    if (modelWeights.referencePatterns && modelWeights.referencePatterns[item.referencia]) {
+      const refPattern = modelWeights.referencePatterns[item.referencia];
+      const referenceAdjustment = refPattern.avgAdjustmentRatio;
+      optimizedQuantity *= referenceAdjustment;
+      confidence += 0.2;
+      factors.push(`Referência: ${(referenceAdjustment - 1) * 100}%`);
+    }
+
+    // Aplicar regras aprendidas por cor
+    if (modelWeights.colorPatterns && modelWeights.colorPatterns[item.cor]) {
+      const colorPattern = modelWeights.colorPatterns[item.cor];
+      const colorAdjustment = colorPattern.avgAdjustmentRatio;
+      optimizedQuantity *= colorAdjustment;
+      confidence += 0.15;
+      factors.push(`Cor: ${(colorAdjustment - 1) * 100}%`);
+    }
+
+    // Aplicar regras aprendidas por tamanho
+    if (modelWeights.sizePatterns && modelWeights.sizePatterns[item.tamanho]) {
+      const sizePattern = modelWeights.sizePatterns[item.tamanho];
+      const sizeAdjustment = sizePattern.avgAdjustmentRatio;
+      optimizedQuantity *= sizeAdjustment;
+      confidence += 0.15;
+      factors.push(`Tamanho: ${(sizeAdjustment - 1) * 100}%`);
+    }
+
+    // Aplicar regras por faixa de quantidade
+    const quantityRange = this.getQuantityRange(item.qtd);
+    if (modelWeights.quantityRangePatterns && modelWeights.quantityRangePatterns[quantityRange]) {
+      const rangePattern = modelWeights.quantityRangePatterns[quantityRange];
+      const rangeAdjustment = rangePattern.avgAdjustmentRatio;
+      optimizedQuantity *= rangeAdjustment;
+      confidence += 0.1;
+      factors.push(`Faixa qtd: ${(rangeAdjustment - 1) * 100}%`);
+    }
+
+    // Aplicar regressor linear se houver dados suficientes
+    if (modelWeights.linearRegression && modelWeights.linearRegression.coefficients) {
+      const regression = modelWeights.linearRegression;
+      const regressionPrediction = this.applyLinearRegression(features, regression);
+      
+      // Combinar predições com peso baseado na qualidade do modelo
+      const regressionWeight = Math.min(regression.rSquared || 0.5, 0.7);
+      optimizedQuantity = (optimizedQuantity * (1 - regressionWeight)) + 
+                         (regressionPrediction * regressionWeight);
+      confidence += regressionWeight * 0.2;
+      factors.push(`ML: R²=${(regression.rSquared * 100).toFixed(1)}%`);
+    }
+
+    // Aplicar tolerância definida pelo usuário
+    const toleranceRange = tolerance / 100;
+    const randomFactor = 1 + (Math.random() - 0.5) * 2 * toleranceRange;
+    optimizedQuantity *= randomFactor;
+
+    // Garantir que a confiança não ultrapasse 1.0
+    confidence = Math.min(confidence, 1.0);
+
+    return {
+      optimizedQuantity,
+      confidence,
+      factors
+    };
+  }
+
+  private extractItemFeatures(item: ProductionItem): number[] {
+    // Extrair características numéricas do item para machine learning
+    return [
+      item.qtd,
+      this.hashString(item.referencia) % 1000 / 1000, // Hash normalizado da referência
+      this.hashString(item.cor) % 1000 / 1000,        // Hash normalizado da cor
+      this.hashString(item.tamanho) % 1000 / 1000,    // Hash normalizado do tamanho
+      item.qtd > 100 ? 1 : 0,                         // Flag para quantidade alta
+      item.qtd < 10 ? 1 : 0                          // Flag para quantidade baixa
+    ];
+  }
+
+  private hashString(str: string): number {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Converter para 32bit integer
+    }
+    return Math.abs(hash);
+  }
+
+  private getQuantityRange(qtd: number): string {
+    if (qtd <= 10) return 'very_low';
+    if (qtd <= 25) return 'low';
+    if (qtd <= 50) return 'medium_low';
+    if (qtd <= 100) return 'medium';
+    if (qtd <= 250) return 'medium_high';
+    if (qtd <= 500) return 'high';
+    return 'very_high';
+  }
+
+  private applyLinearRegression(features: number[], regression: any): number {
+    const coefficients = regression.coefficients;
+    const intercept = regression.intercept || 0;
+    
+    let prediction = intercept;
+    for (let i = 0; i < Math.min(features.length, coefficients.length); i++) {
+      prediction += features[i] * coefficients[i];
+    }
+    
+    return Math.max(1, prediction);
   }
 
   private async logOptimization(
@@ -257,25 +373,373 @@ class RealApiService {
   }
 
   private async trainMLModel(data: any[]): Promise<any> {
-    // Esta é uma implementação simplificada de treinamento
-    // Em um cenário real, você implementaria algoritmos mais complexos
+    console.log('Iniciando treinamento avançado do modelo com', data.length, 'exemplos');
     
-    // Extrair características dos dados
-    const quantities = data.map(item => 
-      typeof item.Qtd === 'number' ? item.Qtd : parseFloat(item.Qtd)
-    ).filter(q => !isNaN(q));
+    // Validar e limpar dados
+    const cleanedData = this.validateAndCleanTrainingData(data);
+    console.log('Dados limpos:', cleanedData.length, 'exemplos válidos');
     
-    // Calcular estatísticas básicas
-    const mean = quantities.reduce((a, b) => a + b, 0) / quantities.length;
-    const variance = quantities.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / quantities.length;
+    if (cleanedData.length < 5) {
+      throw new Error('Dados insuficientes para treinamento. Mínimo: 5 exemplos');
+    }
     
-    // Criar pesos do modelo simplificado
+    // Análise de padrões por categoria
+    const referencePatterns = this.analyzePatternsByCategory(cleanedData, 'Referência');
+    const colorPatterns = this.analyzePatternsByCategory(cleanedData, 'Cor');
+    const sizePatterns = this.analyzePatternsByCategory(cleanedData, 'Tamanho');
+    const quantityRangePatterns = this.analyzeQuantityRangePatterns(cleanedData);
+    
+    // Treinamento de regressão linear
+    const linearRegression = this.trainLinearRegression(cleanedData);
+    
+    // Análise de correlações
+    const correlationAnalysis = this.analyzeCorrelations(cleanedData);
+    
+    // Análise de tendências temporais (se houver dados suficientes)
+    const temporalPatterns = this.analyzeTemporalPatterns(cleanedData);
+    
+    // Métricas de qualidade do modelo
+    const qualityMetrics = this.calculateModelQuality(cleanedData, {
+      referencePatterns,
+      colorPatterns, 
+      sizePatterns,
+      quantityRangePatterns,
+      linearRegression
+    });
+    
+    console.log('Treinamento concluído. Qualidade do modelo:', qualityMetrics);
+    
     return {
-      base_factor: mean / 1000, // Fator base baseado na média
-      variance_factor: variance / 10000, // Fator de variação
-      sample_size: quantities.length, // Tamanho da amostra
-      trained_at: new Date().toISOString() // Data do treinamento
+      // Padrões por categoria
+      referencePatterns,
+      colorPatterns,
+      sizePatterns,
+      quantityRangePatterns,
+      
+      // Modelos matemáticos
+      linearRegression,
+      correlationAnalysis,
+      temporalPatterns,
+      
+      // Métricas e metadados
+      qualityMetrics,
+      sample_size: cleanedData.length,
+      trained_at: new Date().toISOString(),
+      version: 'v2.0-advanced',
+      
+      // Estatísticas gerais
+      statistics: {
+        avgOriginalQtd: cleanedData.reduce((acc, item) => acc + item.qtd, 0) / cleanedData.length,
+        avgOptimizedQtd: cleanedData.reduce((acc, item) => acc + item.qtd_otimizada, 0) / cleanedData.length,
+        avgAdjustmentRatio: cleanedData.reduce((acc, item) => acc + (item.qtd_otimizada / item.qtd), 0) / cleanedData.length,
+        totalVariance: this.calculateVariance(cleanedData.map(item => item.qtd_otimizada / item.qtd))
+      }
     };
+  }
+  
+  private validateAndCleanTrainingData(data: any[]) {
+    return data.filter(item => {
+      // Validar campos obrigatórios
+      const hasRequiredFields = 
+        item.Referência && 
+        item.Cor && 
+        item.Tamanho && 
+        typeof item.Qtd !== 'undefined' && 
+        typeof item.Qtd_Otimizada !== 'undefined';
+      
+      if (!hasRequiredFields) return false;
+      
+      // Converter e validar números
+      const qtd = typeof item.Qtd === 'number' ? item.Qtd : parseFloat(item.Qtd);
+      const qtdOtimizada = typeof item.Qtd_Otimizada === 'number' ? 
+        item.Qtd_Otimizada : parseFloat(item.Qtd_Otimizada);
+      
+      return !isNaN(qtd) && !isNaN(qtdOtimizada) && qtd > 0 && qtdOtimizada > 0;
+    }).map(item => ({
+      referencia: String(item.Referência).trim(),
+      cor: String(item.Cor).trim(),
+      tamanho: String(item.Tamanho).trim(),
+      qtd: typeof item.Qtd === 'number' ? item.Qtd : parseFloat(item.Qtd),
+      qtd_otimizada: typeof item.Qtd_Otimizada === 'number' ? 
+        item.Qtd_Otimizada : parseFloat(item.Qtd_Otimizada),
+      adjustment_ratio: (typeof item.Qtd_Otimizada === 'number' ? 
+        item.Qtd_Otimizada : parseFloat(item.Qtd_Otimizada)) / 
+        (typeof item.Qtd === 'number' ? item.Qtd : parseFloat(item.Qtd))
+    }));
+  }
+  
+  private analyzePatternsByCategory(data: any[], categoryField: string) {
+    const patterns: Record<string, any> = {};
+    const categoryKey = categoryField.toLowerCase();
+    
+    // Agrupar por categoria
+    data.forEach((item: any) => {
+      const category = item[categoryKey];
+      if (!patterns[category]) {
+        patterns[category] = {
+          examples: [],
+          totalOriginal: 0,
+          totalOptimized: 0,
+          count: 0
+        };
+      }
+      
+      patterns[category].examples.push(item);
+      patterns[category].totalOriginal += item.qtd;
+      patterns[category].totalOptimized += item.qtd_otimizada;
+      patterns[category].count++;
+    });
+    
+    // Calcular estatísticas para cada categoria
+    Object.keys(patterns).forEach(category => {
+      const pattern = patterns[category];
+      pattern.avgOriginalQtd = pattern.totalOriginal / pattern.count;
+      pattern.avgOptimizedQtd = pattern.totalOptimized / pattern.count;
+      pattern.avgAdjustmentRatio = pattern.avgOptimizedQtd / pattern.avgOriginalQtd;
+      
+      // Calcular confiança baseada no número de exemplos
+      pattern.confidence = Math.min(pattern.count / 10, 1.0); // Máximo de confiança com 10+ exemplos
+      
+      // Calcular variabilidade
+      const ratios = pattern.examples.map((item: any) => item.adjustment_ratio);
+      pattern.variability = this.calculateVariance(ratios);
+      
+      // Remover arrays para economizar espaço
+      delete pattern.examples;
+    });
+    
+    return patterns;
+  }
+  
+  private analyzeQuantityRangePatterns(data: any[]) {
+    const ranges: Record<string, any> = {};
+    
+    data.forEach((item: any) => {
+      const range = this.getQuantityRange(item.qtd);
+      if (!ranges[range]) {
+        ranges[range] = {
+          examples: [],
+          totalAdjustments: 0,
+          count: 0
+        };
+      }
+      
+      ranges[range].examples.push(item.adjustment_ratio);
+      ranges[range].totalAdjustments += item.adjustment_ratio;
+      ranges[range].count++;
+    });
+    
+    Object.keys(ranges).forEach(range => {
+      const pattern = ranges[range];
+      pattern.avgAdjustmentRatio = pattern.totalAdjustments / pattern.count;
+      pattern.confidence = Math.min(pattern.count / 5, 1.0);
+      pattern.variability = this.calculateVariance(pattern.examples);
+      delete pattern.examples;
+    });
+    
+    return ranges;
+  }
+  
+  private trainLinearRegression(data: any[]) {
+    if (data.length < 10) {
+      return null; // Não treinar regressão com poucos dados
+    }
+    
+    // Preparar features e target
+    const features = data.map((item: any) => this.extractItemFeatures({
+      id: `temp-${Math.random()}`,
+      referencia: item.referencia,
+      cor: item.cor,
+      tamanho: item.tamanho,
+      qtd: item.qtd
+    }));
+    
+    const targets = data.map(item => item.qtd_otimizada);
+    
+    // Implementar regressão linear simples usando método dos mínimos quadrados
+    const regression = this.calculateLinearRegression(features, targets);
+    
+    return regression;
+  }
+  
+  private calculateLinearRegression(X: number[][], y: number[]) {
+    const n = X.length;
+    const numFeatures = X[0].length;
+    
+    // Adicionar coluna de intercept (bias)
+    const XWithIntercept = X.map(row => [1, ...row]);
+    
+    try {
+      // Calcular coeficientes usando método normal: β = (X'X)^(-1)X'y
+      const coefficients = this.solveNormalEquation(XWithIntercept, y);
+      
+      // Calcular R-squared
+      const predictions = XWithIntercept.map(row => 
+        row.reduce((sum, x, i) => sum + x * coefficients[i], 0)
+      );
+      
+      const rSquared = this.calculateRSquared(y, predictions);
+      
+      return {
+        coefficients: coefficients.slice(1), // Remover intercept dos coeficientes
+        intercept: coefficients[0],
+        rSquared,
+        numFeatures,
+        numSamples: n
+      };
+    } catch (error) {
+      console.warn('Erro na regressão linear, usando modelo simplificado:', error);
+      return null;
+    }
+  }
+  
+  private solveNormalEquation(X: number[][], y: number[]) {
+    // Implementação simplificada da equação normal
+    // Em um cenário real, usaria bibliotecas como ml-matrix
+    
+    const n = X.length;
+    const m = X[0].length;
+    
+    // X'X
+    const XTX = Array(m).fill(0).map(() => Array(m).fill(0));
+    for (let i = 0; i < m; i++) {
+      for (let j = 0; j < m; j++) {
+        for (let k = 0; k < n; k++) {
+          XTX[i][j] += X[k][i] * X[k][j];
+        }
+      }
+    }
+    
+    // X'y
+    const XTy = Array(m).fill(0);
+    for (let i = 0; i < m; i++) {
+      for (let k = 0; k < n; k++) {
+        XTy[i] += X[k][i] * y[k];
+      }
+    }
+    
+    // Resolver sistema linear (implementação simplificada)
+    return this.solveLinearSystem(XTX, XTy);
+  }
+  
+  private solveLinearSystem(A: number[][], b: number[]) {
+    // Implementação simplificada de eliminação gaussiana
+    const n = A.length;
+    const augmented = A.map((row, i) => [...row, b[i]]);
+    
+    // Forward elimination
+    for (let i = 0; i < n; i++) {
+      let maxRow = i;
+      for (let k = i + 1; k < n; k++) {
+        if (Math.abs(augmented[k][i]) > Math.abs(augmented[maxRow][i])) {
+          maxRow = k;
+        }
+      }
+      [augmented[i], augmented[maxRow]] = [augmented[maxRow], augmented[i]];
+      
+      for (let k = i + 1; k < n; k++) {
+        const factor = augmented[k][i] / augmented[i][i];
+        for (let j = i; j <= n; j++) {
+          augmented[k][j] -= factor * augmented[i][j];
+        }
+      }
+    }
+    
+    // Back substitution
+    const x = Array(n).fill(0);
+    for (let i = n - 1; i >= 0; i--) {
+      x[i] = augmented[i][n];
+      for (let j = i + 1; j < n; j++) {
+        x[i] -= augmented[i][j] * x[j];
+      }
+      x[i] /= augmented[i][i];
+    }
+    
+    return x;
+  }
+  
+  private calculateRSquared(actual: number[], predicted: number[]) {
+    const actualMean = actual.reduce((sum, val) => sum + val, 0) / actual.length;
+    
+    const totalSumSquares = actual.reduce((sum, val) => sum + Math.pow(val - actualMean, 2), 0);
+    const residualSumSquares = actual.reduce((sum, val, i) => 
+      sum + Math.pow(val - predicted[i], 2), 0);
+    
+    return 1 - (residualSumSquares / totalSumSquares);
+  }
+  
+  private analyzeCorrelations(data: any[]) {
+    // Analisar correlações entre diferentes fatores
+    const correlations: Record<string, number> = {};
+    
+    // Correlação entre quantidade original e otimizada
+    const originalQtds = data.map((item: any) => item.qtd);
+    const optimizedQtds = data.map((item: any) => item.qtd_otimizada);
+    correlations.qtdCorrelation = this.calculateCorrelation(originalQtds, optimizedQtds);
+    
+    return correlations;
+  }
+  
+  private calculateCorrelation(x: number[], y: number[]) {
+    const n = x.length;
+    const xMean = x.reduce((sum, val) => sum + val, 0) / n;
+    const yMean = y.reduce((sum, val) => sum + val, 0) / n;
+    
+    let numerator = 0;
+    let xVariance = 0;
+    let yVariance = 0;
+    
+    for (let i = 0; i < n; i++) {
+      const xDiff = x[i] - xMean;
+      const yDiff = y[i] - yMean;
+      numerator += xDiff * yDiff;
+      xVariance += xDiff * xDiff;
+      yVariance += yDiff * yDiff;
+    }
+    
+    return numerator / Math.sqrt(xVariance * yVariance);
+  }
+  
+  private analyzeTemporalPatterns(data: any[]) {
+    // Por enquanto, retornar null pois não temos timestamps nos dados
+    // Em futuras versões, analisar padrões temporais se houver dados de data
+    return null;
+  }
+  
+  private calculateModelQuality(data: any[], model: any) {
+    // Simular performance do modelo nos dados de treinamento
+    let totalError = 0;
+    let correctPredictions = 0;
+    
+    data.forEach((item: any) => {
+      const prediction = this.predictOptimalQuantity({
+        id: `temp-${Math.random()}`,
+        referencia: item.referencia,
+        cor: item.cor,
+        tamanho: item.tamanho,
+        qtd: item.qtd
+      }, model, 5); // 5% de tolerância para teste
+      
+      const error = Math.abs(prediction.optimizedQuantity - item.qtd_otimizada);
+      const relativeError = error / item.qtd_otimizada;
+      
+      totalError += relativeError;
+      if (relativeError < 0.1) { // Dentro de 10% do valor real
+        correctPredictions++;
+      }
+    });
+    
+    return {
+      averageError: totalError / data.length,
+      accuracy: correctPredictions / data.length,
+      qualityScore: Math.max(0, 1 - (totalError / data.length))
+    };
+  }
+  
+  private calculateVariance(values: number[]) {
+    const mean = values.reduce((sum, val) => sum + val, 0) / values.length;
+    const squaredDiffs = values.map(val => Math.pow(val - mean, 2));
+    return squaredDiffs.reduce((sum, val) => sum + val, 0) / values.length;
   }
 
   async getTrainingHistory(): Promise<TrainingHistoryEntry[]> {
