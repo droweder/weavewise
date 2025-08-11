@@ -11,13 +11,29 @@ export const TrainingDataViewer: React.FC = () => {
   // Função para ordenar cabeçalhos na ordem desejada: Referência, Tamanho, Cor, Quantidade...
   const getOrderedHeaders = (item: any) => {
     const allHeaders = Object.keys(item);
-    const orderedHeaders = ['referencia', 'tamanho', 'cor', 'qtd', 'qtd_otimizada'];
     
-    // Primeiro, adicionar os cabeçalhos na ordem desejada (se existirem)
-    const result = orderedHeaders.filter(header => allHeaders.includes(header));
+    // Lista de possíveis nomes de campos na ordem desejada
+    const orderedHeadersOptions = [
+      ['referencia', 'Referência', 'REFERENCIA'],
+      ['tamanho', 'Tamanho', 'TAMANHO'], 
+      ['cor', 'Cor', 'COR'],
+      ['qtd', 'Qtd', 'QTD', 'Quantidade'],
+      ['qtd_otimizada', 'Qtd_otimizada', 'QTD_OTIMIZADA', 'qtd otimizada']
+    ];
     
-    // Depois, adicionar outros cabeçalhos que não estão na lista ordenada
-    const remainingHeaders = allHeaders.filter(header => !orderedHeaders.includes(header));
+    const result: string[] = [];
+    
+    // Para cada grupo de opções, encontrar qual campo existe nos dados
+    orderedHeadersOptions.forEach(options => {
+      const foundHeader = options.find(option => allHeaders.includes(option));
+      if (foundHeader) {
+        result.push(foundHeader);
+      }
+    });
+    
+    // Adicionar outros cabeçalhos que não estão na lista ordenada
+    const usedHeaders = new Set(result);
+    const remainingHeaders = allHeaders.filter(header => !usedHeaders.has(header));
     
     return [...result, ...remainingHeaders];
   };
@@ -26,10 +42,22 @@ export const TrainingDataViewer: React.FC = () => {
   const getDisplayName = (fieldName: string) => {
     const fieldMap: Record<string, string> = {
       'referencia': 'REFERÊNCIA',
-      'tamanho': 'TAMANHO', 
+      'Referência': 'REFERÊNCIA', 
+      'REFERENCIA': 'REFERÊNCIA',
+      'tamanho': 'TAMANHO',
+      'Tamanho': 'TAMANHO',
+      'TAMANHO': 'TAMANHO',
       'cor': 'COR',
+      'Cor': 'COR', 
+      'COR': 'COR',
       'qtd': 'QTD',
-      'qtd_otimizada': 'QTD_OTIMIZADA'
+      'Qtd': 'QTD',
+      'QTD': 'QTD',
+      'Quantidade': 'QTD',
+      'qtd_otimizada': 'QTD_OTIMIZADA',
+      'Qtd_otimizada': 'QTD_OTIMIZADA',
+      'QTD_OTIMIZADA': 'QTD_OTIMIZADA',
+      'qtd otimizada': 'QTD_OTIMIZADA'
     };
     return fieldMap[fieldName] || fieldName.toUpperCase();
   };
