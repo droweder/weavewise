@@ -90,9 +90,9 @@ export const TrainingDataViewer: React.FC = () => {
   const detectLayersForRefCor = (data: any[], referencia: string, cor: string): number => {
     // Filtrar itens da mesma referência+cor
     const sameRefCorItems = data.filter(item => {
-      const itemRef = item.referencia || item.Referência || item.REFERENCIA || '';
-      const itemCor = item.cor || item.Cor || item.COR || '';
-      return itemRef === referencia && itemCor === cor;
+      const itemRef = String(item.referencia || item.Referência || item.REFERENCIA || '');
+      const itemCor = String(item.cor || item.Cor || item.COR || '');
+      return itemRef === String(referencia) && itemCor === String(cor);
     });
     
     if (sameRefCorItems.length === 0) return 36;
@@ -100,7 +100,7 @@ export const TrainingDataViewer: React.FC = () => {
     // Coletar quantidades OTIMIZADAS preferencialmente (usa QTD só se não tiver QTD_OTIMIZADA)
     const quantities = sameRefCorItems
       .map(item => {
-        const qtdOtimizada = parseInt(item.qtd_otimizada || item.Qtd_otimizada || item.QTD_OTIMIZADA) || 0;
+        const qtdOtimizada = parseInt(item.qtd_otimizada || item.Qtd_otimizada || item.QTD_OTIMIZADA || item['Qtd_Otimizada']) || 0;
         const qtdOriginal = parseInt(item.qtd || item.Qtd || item.QTD) || 0;
         // Sempre usar QTD_OTIMIZADA se existir, senão usar QTD
         return qtdOtimizada > 0 ? qtdOtimizada : qtdOriginal;
@@ -111,6 +111,8 @@ export const TrainingDataViewer: React.FC = () => {
     
     // Calcular MDC de todas as quantidades do grupo
     const mdc = gcdMultiple(quantities);
+    
+
     
     // O MDC é o número correto de camadas
     // Só validar se está dentro de um range razoável (6 a 60 camadas)
@@ -125,8 +127,8 @@ export const TrainingDataViewer: React.FC = () => {
   // Função para obter valor de uma célula (incluindo cálculos)
   const getCellValue = (item: any, header: string) => {
     if (header === 'camadas') {
-      const referencia = item.referencia || item.Referência || item.REFERENCIA || '';
-      const cor = item.cor || item.Cor || item.COR || '';
+      const referencia = String(item.referencia || item.Referência || item.REFERENCIA || '');
+      const cor = String(item.cor || item.Cor || item.COR || '');
       return detectLayersForRefCor(trainingData, referencia, cor);
     }
     
@@ -159,6 +161,21 @@ export const TrainingDataViewer: React.FC = () => {
 
         // Extrair dados de todos os registros
         const allData = data.flatMap(record => record.data);
+        
+        // Debug: verificar se 60797 está nos dados
+        const has60797 = allData.some(item => {
+          const ref = String(item.referencia || item.Referência || item.REFERENCIA || '');
+          return ref === '60797';
+        });
+        console.log('Dados carregados. Total:', allData.length, 'Tem 60797?', has60797);
+        if (has60797) {
+          const items60797 = allData.filter(item => {
+            const ref = String(item.referencia || item.Referência || item.REFERENCIA || '');
+            return ref === '60797';
+          });
+          console.log('Itens da 60797:', items60797);
+        }
+        
         setTrainingData(allData);
       } catch (err) {
         setError('Erro ao carregar dados de treinamento');
