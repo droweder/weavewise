@@ -130,19 +130,37 @@ export const TrainingDataViewer: React.FC = () => {
     return fieldMap[fieldName] || fieldName.toUpperCase();
   };
 
+  // Função para detectar camadas baseada na quantidade individual
+  const detectLayersFromQuantity = (quantity: number): number => {
+    if (quantity <= 0) return 36;
+    
+    const commonDivisors = [36, 48, 24, 30, 42, 18, 12];
+    for (const divisor of commonDivisors) {
+      if (quantity % divisor === 0) {
+        return divisor;
+      }
+    }
+    
+    // Buscar o maior divisor entre 6 e 60
+    for (let i = 60; i >= 6; i--) {
+      if (quantity % i === 0) {
+        return i;
+      }
+    }
+    
+    return 36; // Default
+  };
+
   // Função para obter valor de uma célula (incluindo cálculos)
   const getCellValue = (item: any, header: string) => {
     if (header === 'camadas') {
-      const referencia = item.referencia || item.Referência || item.REFERENCIA || '';
-      const cor = item.cor || item.Cor || item.COR || '';
-      return detectLayers(trainingData, referencia, cor);
+      const qtdOtimizada = parseInt(item.qtd_otimizada || item.Qtd_otimizada || item.QTD_OTIMIZADA || item.qtd || 0);
+      return detectLayersFromQuantity(qtdOtimizada);
     }
     
     if (header === 'repeticoes') {
       const qtdOtimizada = parseInt(item.qtd_otimizada || item.Qtd_otimizada || item.QTD_OTIMIZADA || item.qtd || 0);
-      const referencia = item.referencia || item.Referência || item.REFERENCIA || '';
-      const cor = item.cor || item.Cor || item.COR || '';
-      const camadas = detectLayers(trainingData, referencia, cor);
+      const camadas = detectLayersFromQuantity(qtdOtimizada);
       
       return camadas > 0 ? Math.round(qtdOtimizada / camadas) : 1;
     }

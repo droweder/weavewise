@@ -18,47 +18,27 @@ const gcdMultiple = (numbers: number[]): number => {
   return result;
 };
 
-// Função para detectar camadas usando MDC por referência+cor (dados históricos)
+// Função para detectar camadas baseada na quantidade otimizada individual
 const detectLayers = (items: any[], currentItem: any): number => {
-  const referencia = currentItem.referencia;
-  const cor = currentItem.cor;
+  const quantity = currentItem.qtd_otimizada || currentItem.qtd;
   
-  // Buscar todas as quantidades da mesma referência+cor no resultado atual
-  const quantities = items
-    .filter(item => item.referencia === referencia && item.cor === cor)
-    .map(item => item.qtd_otimizada || item.qtd)
-    .filter(qtd => qtd > 0);
+  if (quantity <= 0) return 36;
   
-  if (quantities.length === 0) return 36;
-  
-  if (quantities.length === 1) {
-    const qtd = quantities[0];
-    const commonDivisors = [36, 48, 24, 30, 42, 18, 12];
-    for (const divisor of commonDivisors) {
-      if (qtd % divisor === 0) {
-        return divisor;
-      }
-    }
-    return 36;
-  }
-  
-  // Calcular MDC de múltiplas quantidades
-  const mdc = gcdMultiple(quantities);
-  
-  // Validar se o MDC faz sentido como número de camadas
-  if (mdc >= 6 && mdc <= 60) {
-    return mdc;
-  }
-  
-  // Fallback para divisor comum
   const commonDivisors = [36, 48, 24, 30, 42, 18, 12];
   for (const divisor of commonDivisors) {
-    if (quantities.every(qtd => qtd % divisor === 0)) {
+    if (quantity % divisor === 0) {
       return divisor;
     }
   }
   
-  return 36;
+  // Buscar o maior divisor entre 6 e 60
+  for (let i = 60; i >= 6; i--) {
+    if (quantity % i === 0) {
+      return i;
+    }
+  }
+  
+  return 36; // Default
 };
 
 interface OptimizationResultsProps {
