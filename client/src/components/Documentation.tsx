@@ -153,3 +153,5 @@ export const Documentation: React.FC = () => {
           </div>
         </div>
       </div>
+  )
+}
