@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { BarChart3, History } from 'lucide-react';
+import { BarChart3, History, BookOpen } from 'lucide-react';
 import { ProductionOptimizer } from './ProductionOptimizer';
 import { TrainingHistory } from './TrainingHistory';
+import { Documentation } from './Documentation';
 
 interface LayoutProps {
   onLogout: () => void;
@@ -9,9 +10,9 @@ interface LayoutProps {
 }
 
 export const Layout: React.FC<LayoutProps> = ({ onLogout, children }) => {
-  const [currentView, setCurrentView] = useState<'optimization' | 'training-history'>('optimization');
+  const [currentView, setCurrentView] = useState<'optimization' | 'training' | 'documentation'>('optimization');
 
-  const handleViewChange = (view: 'optimization' | 'training-history') => {
+  const handleViewChange = (view: 'optimization' | 'training' | 'documentation') => {
     setCurrentView(view);
   };
 
@@ -52,15 +53,27 @@ export const Layout: React.FC<LayoutProps> = ({ onLogout, children }) => {
             </button>
             
             <button
-              onClick={() => handleViewChange('training-history')}
+              onClick={() => handleViewChange('training')}
               className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center ${
-                currentView === 'training-history'
+                currentView === 'training'
                   ? 'border-blue-500 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
               <History className="h-5 w-5 mr-2" />
-              Histórico de Treinamento
+              Treinamento
+            </button>
+            
+            <button
+              onClick={() => handleViewChange('documentation')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center ${
+                currentView === 'documentation'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <BookOpen className="h-5 w-5 mr-2" />
+              Documentação
             </button>
           </div>
         </div>
@@ -73,9 +86,13 @@ export const Layout: React.FC<LayoutProps> = ({ onLogout, children }) => {
             <div className="px-4 py-6 sm:px-0">
               <ProductionOptimizer />
             </div>
-          ) : (
+          ) : currentView === 'training' ? (
             <div className="px-4 py-6 sm:px-0">
               <TrainingHistory />
+            </div>
+          ) : (
+            <div className="px-4 py-6 sm:px-0">
+              <Documentation />
             </div>
           )}
         </div>
