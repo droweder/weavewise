@@ -3,7 +3,6 @@ import { BarChart3, History, BookOpen } from 'lucide-react';
 import { ProductionOptimizer } from './ProductionOptimizer';
 import { TrainingHistory } from './TrainingHistory';
 import { Documentation } from './Documentation';
-import { Documentation } from './Documentation';
 
 interface LayoutProps {
   onLogout: () => void;
