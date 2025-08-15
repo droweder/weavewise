@@ -69,10 +69,29 @@ class RealApiService {
   }
 
   private modelBasedOptimization(items: ProductionItem[], tolerance: number, modelWeights: any) {
+    // Primeiro, pré-calcular o MDC para cada grupo de Referencia+Cor nos itens de entrada.
+    // Isso evita recalcular o MDC para cada item no loop.
+    const inputGroupLayers: Record<string, number> = {};
+    const groups: Record<string, ProductionItem[]> = {};
+
+    items.forEach(item => {
+      const key = `${item.referencia}-${item.cor}`;
+      if (!groups[key]) {
+        groups[key] = [];
+      }
+      groups[key].push(item);
+    });
+
+    Object.keys(groups).forEach(key => {
+      const groupItems = groups[key];
+      const quantities = groupItems.map(i => i.qtd);
+      inputGroupLayers[key] = this.gcdMultiple(quantities);
+    });
+
     const optimizedItems = items.map(item => {
       // Aplicar o modelo treinado para cada item
-      const prediction = this.predictOptimalQuantity(item, modelWeights, tolerance);
-      const qtd_otimizada = Math.max(1, Math.round(prediction.optimizedQuantity));
+      const prediction = this.predictOptimalQuantity(item, modelWeights, tolerance, inputGroupLayers);
+      const qtd_otimizada = Math.max(1, prediction.optimizedQuantity);
       const diferenca = qtd_otimizada - item.qtd;
       
       return {
@@ -100,117 +119,60 @@ class RealApiService {
     };
   }
 
-  private predictOptimalQuantity(item: ProductionItem, modelWeights: any, tolerance: number) {
-    // Predição baseada EXCLUSIVAMENTE nos padrões históricos do analista
-    // CRUCIAL: Detectar automaticamente o número de camadas de tecido dos dados
-    
+  private predictOptimalQuantity(
+    item: ProductionItem,
+    modelWeights: any,
+    tolerance: number,
+    inputGroupLayers: Record<string, number>
+  ) {
     let optimizedQuantity = item.qtd;
     let confidence = 0.0;
-    let factors = [];
+    let factors: string[] = [];
     let layers = 0;
 
-    // PRIORIDADE 1: Buscar padrão EXATO (referencia + tamanho + cor)
-    const exactKey = `${item.referencia}-${item.tamanho}-${item.cor}`;
-    if (modelWeights.exactPatterns && modelWeights.exactPatterns[exactKey]) {
-      const exactPattern = modelWeights.exactPatterns[exactKey];
-      // Para padrões exatos, usar diretamente os valores otimizados do analista
-      optimizedQuantity = Math.round(exactPattern.avgOptimizedQtd);
-      confidence = Math.min(exactPattern.count / 3, 1.0);
-      factors.push(`PADRÃO EXATO: ${exactPattern.count} exemplos`);
-      
-      // Detectar camadas usando MDC dos dados históricos da referência+cor
-      layers = this.detectLayersFromData(
-        modelWeights.trainingData || [], 
-        item.referencia, 
-        item.cor
-      );
+    const groupKey = `${item.referencia}-${item.cor}`;
+
+    // 1. Tentar encontrar camadas aprendidas no modelo treinado
+    if (modelWeights.learnedLayers && modelWeights.learnedLayers[groupKey]) {
+      layers = modelWeights.learnedLayers[groupKey];
+      confidence = 0.9;
+      factors.push(`Padrão de ${layers} camadas aprendido do histórico.`);
     }
-    
-    // PRIORIDADE 2: Buscar padrões por referência+cor (mesmo produto, cores diferentes)
-    else if (modelWeights.referenceColorPatterns) {
-      const refColorKey = `${item.referencia}-${item.cor}`;
-      if (modelWeights.referenceColorPatterns[refColorKey]) {
-        const pattern = modelWeights.referenceColorPatterns[refColorKey];
-        // Buscar o tamanho mais próximo nos dados do analista
-        const closestExample = this.findClosestSizeExample(item, pattern.examples);
-        if (closestExample) {
-          optimizedQuantity = closestExample.qtd_otimizada;
-          confidence = 0.8;
-          factors.push(`REF+COR: ${pattern.count} exemplos (tamanho similar)`);
-          layers = this.detectLayersFromData(
-            modelWeights.trainingData || [], 
-            item.referencia, 
-            item.cor
-          );
-        }
-      }
+    // 2. Fallback: usar o MDC do grupo de entrada atual se não houver padrão aprendido
+    else if (inputGroupLayers[groupKey] > 1) {
+      layers = inputGroupLayers[groupKey];
+      confidence = 0.5;
+      factors.push(`MDC de ${layers} camadas detectado no grupo de entrada atual.`);
     }
-    
-    // PRIORIDADE 3: Detectar padrão de camadas por referência
-    if (confidence < 0.7 && modelWeights.referencePatterns && modelWeights.referencePatterns[item.referencia]) {
-      const refPattern = modelWeights.referencePatterns[item.referencia];
-      
-      // Analisar múltiplos comuns nos dados da referência para detectar camadas
-      if (refPattern.layerPattern) {
-        const targetLayers = refPattern.layerPattern.mostCommonLayers;
-        optimizedQuantity = this.adjustToLayers(item.qtd, targetLayers);
-        confidence = 0.6;
-        factors.push(`REF "${item.referencia}": ${targetLayers} camadas detectadas`);
-        layers = targetLayers;
-      } else {
-        // Aplicar ajuste proporcional baseado nos dados históricos
-        const ratio = refPattern.avgAdjustmentRatio;
-        optimizedQuantity = Math.round(item.qtd * ratio);
-        confidence = refPattern.confidence * 0.5;
-        factors.push(`REF "${item.referencia}": ajuste ${((ratio - 1) * 100).toFixed(1)}%`);
-        layers = this.detectLayersFromData(
-          modelWeights.trainingData || [], 
-          item.referencia, 
-          item.cor
-        );
-      }
+    // 3. Fallback final: usar o padrão global do modelo
+    else if (modelWeights.globalDefaultLayer) {
+      layers = modelWeights.globalDefaultLayer;
+      confidence = 0.2;
+      factors.push(`Usando padrão global de ${layers} camadas.`);
     }
-    
-    // PRIORIDADE 4: Usar padrão global de camadas se detectado
-    if (confidence < 0.5 && modelWeights.globalLayerPattern) {
-      const globalLayers = modelWeights.globalLayerPattern.mostCommonLayers;
-      optimizedQuantity = this.adjustToLayers(item.qtd, globalLayers);
-      confidence = 0.3;
-      factors.push(`Padrão global: ${globalLayers} camadas`);
-      layers = globalLayers;
+    // 4. Se tudo falhar, não otimizar
+    else {
+      factors.push('Nenhum padrão aplicável encontrado.');
+      return { optimizedQuantity: item.qtd, confidence: 0, factors, layers: 0 };
     }
 
-    // Fallback: manter quantidade original
-    if (confidence < 0.2) {
-      optimizedQuantity = item.qtd;
-      confidence = 0.0;
-      factors.push('Sem padrão histórico - mantendo quantidade original');
-      layers = this.detectLayersFromData(
-        modelWeights.trainingData || [], 
-        item.referencia, 
-        item.cor
-      );
-    }
+    // Calcular a quantidade otimizada usando a fórmula de teto
+    optimizedQuantity = this.adjustToLayers(item.qtd, layers);
 
-    // Aplicar tolerância respeitando múltiplos das camadas
-    if (tolerance > 0 && layers > 0) {
+    // Aplicar tolerância (opcional, pode ser removido se não for desejado)
+    if (tolerance > 0) {
       const toleranceRange = tolerance / 100;
       const variation = Math.round((Math.random() - 0.5) * 2 * toleranceRange * layers);
       optimizedQuantity = Math.max(layers, optimizedQuantity + variation);
-    }
-
-    // Garantir que seja múltiplo das camadas detectadas
-    if (layers > 0) {
+      // Reajustar para garantir que ainda é um múltiplo
       optimizedQuantity = Math.round(optimizedQuantity / layers) * layers;
     }
-
-    optimizedQuantity = Math.max(1, optimizedQuantity);
     
     return {
-      optimizedQuantity,
+      optimizedQuantity: Math.max(1, optimizedQuantity),
       confidence,
       factors,
-      layers: layers || this.detectLayers(optimizedQuantity)
+      layers
     };
   }
 
@@ -273,8 +235,9 @@ class RealApiService {
     return Math.max(1, Math.round(quantity / 36)); // Default: aproximar para múltiplo de 36
   }
 
-  // Ajustar quantidade para múltiplo das camadas
+  // Ajustar quantidade para o múltiplo mais próximo das camadas
   private adjustToLayers(quantity: number, layers: number): number {
+    if (layers <= 0) return quantity;
     return Math.round(quantity / layers) * layers;
   }
 
@@ -487,88 +450,62 @@ class RealApiService {
   }
 
   private async trainMLModel(data: any[]): Promise<any> {
-    console.log('Iniciando treinamento avançado do modelo com', data.length, 'exemplos');
-    
-    // Validar e limpar dados
+    console.log('Iniciando treinamento do modelo com lógica de MDC com', data.length, 'exemplos');
+
+    // 1. Validar e limpar dados
     const cleanedData = this.validateAndCleanTrainingData(data);
     console.log('Dados limpos:', cleanedData.length, 'exemplos válidos');
-    
-    if (cleanedData.length < 5) {
-      throw new Error('Dados insuficientes para treinamento. Mínimo: 5 exemplos');
+
+    if (cleanedData.length === 0) {
+      throw new Error('Nenhum dado válido encontrado para treinamento.');
     }
-    
-    // PADRÕES EXATOS: Combinações específicas de referência+tamanho+cor
-    const exactPatterns = this.analyzeExactPatterns(cleanedData);
-    
-    // PADRÕES POR REFERÊNCIA+COR (crucial para enfesto)
-    const referenceColorPatterns = this.analyzeReferenceColorPatterns(cleanedData);
-    
-    // Análise de padrões por categoria
-    const referencePatterns = this.analyzePatternsByCategory(cleanedData, 'referencia');
-    const colorPatterns = this.analyzePatternsByCategory(cleanedData, 'cor');
-    const sizePatterns = this.analyzePatternsByCategory(cleanedData, 'tamanho');
-    const quantityRangePatterns = this.analyzeQuantityRangePatterns(cleanedData);
-    
-    // ANÁLISE DE PADRÕES DE CAMADAS (NOVA FUNCIONALIDADE)
-    const layerAnalysis = this.analyzeLayers(cleanedData);
-    
-    // Treinamento de regressão linear
-    const linearRegression = this.trainLinearRegression(cleanedData);
-    
-    // Análise de correlações
-    const correlationAnalysis = this.analyzeCorrelations(cleanedData);
-    
-    // Análise de tendências temporais (se houver dados suficientes)
-    const temporalPatterns = this.analyzeTemporalPatterns(cleanedData);
-    
-    // Métricas de qualidade do modelo
-    const qualityMetrics = this.calculateModelQuality(cleanedData, {
-      exactPatterns,
-      referencePatterns,
-      colorPatterns, 
-      sizePatterns,
-      quantityRangePatterns,
-      linearRegression
+
+    // 2. Agrupar dados por Referência e Cor
+    const referenceColorGroups: Record<string, any[]> = {};
+    cleanedData.forEach((item: any) => {
+      const key = `${item.referencia}-${item.cor}`;
+      if (!referenceColorGroups[key]) {
+        referenceColorGroups[key] = [];
+      }
+      referenceColorGroups[key].push(item);
+    });
+
+    // 3. Aprender o MDC (camadas) para cada grupo
+    const learnedLayers: Record<string, number> = {};
+    const allLayers: number[] = [];
+    Object.keys(referenceColorGroups).forEach(key => {
+      const groupItems = referenceColorGroups[key];
+      const optimizedQuantities = groupItems.map(item => item.qtd_otimizada);
+
+      if (optimizedQuantities.length > 0) {
+        const mdc = this.gcdMultiple(optimizedQuantities);
+        // Usar um valor padrão se o MDC for muito baixo (ex: 1)
+        learnedLayers[key] = mdc > 1 ? mdc : this.detectLayers(optimizedQuantities[0]);
+        allLayers.push(learnedLayers[key]);
+      }
     });
     
-    console.log('Treinamento concluído. Qualidade do modelo:', qualityMetrics);
+    console.log('MDCs (camadas) aprendidos por grupo:', learnedLayers);
+
+    // 4. Determinar um fallback global (a camada mais comum)
+    const layerFrequencies: Record<number, number> = {};
+    allLayers.forEach(layer => {
+      layerFrequencies[layer] = (layerFrequencies[layer] || 0) + 1;
+    });
     
+    const globalDefaultLayer = Object.keys(layerFrequencies).length > 0
+      ? parseInt(Object.entries(layerFrequencies).sort((a, b) => b[1] - a[1])[0][0])
+      : 36; // Default fallback se nada for aprendido
+
+    console.log('Fallback de camada global determinado:', globalDefaultLayer);
+
+    // 5. Retornar os pesos do modelo simplificado
     return {
-      // Padrões específicos (NOVA FUNCIONALIDADE)
-      exactPatterns,
-      referenceColorPatterns,
-      
-      // Padrões por categoria
-      referencePatterns,
-      colorPatterns,
-      sizePatterns,
-      quantityRangePatterns,
-      
-      // Análise de camadas (CRUCIAL para enfesto)
-      globalLayerPattern: layerAnalysis.globalPattern,
-      referenceLayerPatterns: layerAnalysis.referencePatterns,
-      
-      // Manter dados de treinamento para cálculos de MDC
-      trainingData: cleanedData,
-      
-      // Modelos matemáticos
-      linearRegression,
-      correlationAnalysis,
-      temporalPatterns,
-      
-      // Métricas e metadados
-      qualityMetrics,
+      learnedLayers,
+      globalDefaultLayer,
       sample_size: cleanedData.length,
       trained_at: new Date().toISOString(),
-      version: 'v3.0-pattern-based',
-      
-      // Estatísticas gerais
-      statistics: {
-        avgOriginalQtd: cleanedData.reduce((acc, item) => acc + item.qtd, 0) / cleanedData.length,
-        avgOptimizedQtd: cleanedData.reduce((acc, item) => acc + item.qtd_otimizada, 0) / cleanedData.length,
-        avgAdjustmentRatio: cleanedData.reduce((acc, item) => acc + (item.qtd_otimizada / item.qtd), 0) / cleanedData.length,
-        totalVariance: this.calculateVariance(cleanedData.map(item => item.qtd_otimizada / item.qtd))
-      }
+      version: 'v4.0-mdc-based',
     };
   }
 
@@ -1073,36 +1010,6 @@ class RealApiService {
     // Por enquanto, retornar null pois não temos timestamps nos dados
     // Em futuras versões, analisar padrões temporais se houver dados de data
     return null;
-  }
-  
-  private calculateModelQuality(data: any[], model: any) {
-    // Simular performance do modelo nos dados de treinamento
-    let totalError = 0;
-    let correctPredictions = 0;
-    
-    data.forEach((item: any) => {
-      const prediction = this.predictOptimalQuantity({
-        id: `temp-${Math.random()}`,
-        referencia: item.referencia,
-        cor: item.cor,
-        tamanho: item.tamanho,
-        qtd: item.qtd
-      }, model, 5); // 5% de tolerância para teste
-      
-      const error = Math.abs(prediction.optimizedQuantity - item.qtd_otimizada);
-      const relativeError = error / item.qtd_otimizada;
-      
-      totalError += relativeError;
-      if (relativeError < 0.1) { // Dentro de 10% do valor real
-        correctPredictions++;
-      }
-    });
-    
-    return {
-      averageError: totalError / data.length,
-      accuracy: correctPredictions / data.length,
-      qualityScore: Math.max(0, 1 - (totalError / data.length))
-    };
   }
   
   private calculateVariance(values: number[]) {
