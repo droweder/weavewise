@@ -1,15 +1,15 @@
 import React, { useState, useRef } from 'react';
-import { Upload, Play, Save, RotateCcw, Eye, EyeOff } from 'lucide-react';
+import { Upload, Play, Save, RotateCcw } from 'lucide-react';
 import { realApiService } from '../services/realApiService';
 import { ProductionItem } from '../types';
 import * as XLSX from 'xlsx';
+import { OptimizationResults } from './OptimizationResults';
 
 export const ProductionOptimizer: React.FC = () => {
   const [items, setItems] = useState<ProductionItem[]>([]);
   const [optimizedItems, setOptimizedItems] = useState<ProductionItem[]>([]);
   const [tolerance, setTolerance] = useState<number>(5);
   const [isOptimizing, setIsOptimizing] = useState<boolean>(false);
-  const [showOptimized, setShowOptimized] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -129,9 +129,6 @@ export const ProductionOptimizer: React.FC = () => {
     }
   };
 
-  const toggleView = () => {
-    setShowOptimized(!showOptimized);
-  };
 
   const handleToleranceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = parseInt(e.target.value);
@@ -275,32 +272,17 @@ export const ProductionOptimizer: React.FC = () => {
       )}
       
       {/* Visualização de dados */}
-      {items.length > 0 && (
+      {optimizedItems.length > 0 ? (
         <div className="mt-6">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-medium text-gray-800">
-              {showOptimized && optimizedItems.length > 0 
-                ? 'Dados Otimizados' 
-                : 'Dados Originais'}
-            </h3>
-            <button
-              onClick={toggleView}
-              className="flex items-center text-sm text-gray-600 hover:text-gray-900"
-            >
-              {showOptimized ? (
-                <>
-                  <EyeOff className="h-4 w-4 mr-1" />
-                  Ocultar Otimizados
-                </>
-              ) : (
-                <>
-                  <Eye className="h-4 w-4 mr-1" />
-                  Mostrar Otimizados
-                </>
-              )}
-            </button>
-          </div>
-          
+          <h3 className="text-lg font-medium text-gray-800 mb-4">Dados Otimizados</h3>
+          <OptimizationResults
+            items={optimizedItems}
+            onItemUpdate={setOptimizedItems}
+          />
+        </div>
+      ) : items.length > 0 && (
+        <div className="mt-6">
+          <h3 className="text-lg font-medium text-gray-800 mb-4">Dados Originais</h3>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
@@ -309,38 +291,20 @@ export const ProductionOptimizer: React.FC = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tamanho</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cor</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantidade</th>
-                  {showOptimized && optimizedItems.length > 0 && (
-                    <>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Qtd Otimizada</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Diferença</th>
-                    </>
-                  )}
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {(showOptimized && optimizedItems.length > 0 ? optimizedItems : items).map((item) => (
+                {items.map((item) => (
                   <tr key={item.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.referencia}</td>
                     <td className="px-6 py-4 text-sm text-gray-500">{item.tamanho}</td>
                     <td className="px-6 py-4 text-sm text-gray-500">{item.cor}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.qtd}</td>
-                    {showOptimized && optimizedItems.length > 0 && (
-                      <>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.qtd_otimizada}</td>
-                        <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${
-                          (item.diferenca || 0) > 0 ? 'text-green-600' : 
-                          (item.diferenca || 0) < 0 ? 'text-red-600' : 'text-gray-500'
-                        }`}>
-                          {(item.diferenca || 0) > 0 ? '+' : ''}{item.diferenca}
-                        </td>
-                      </>
-                    )}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          
           <div className="mt-4 text-sm text-gray-500">
             Total de itens: {items.length}
           </div>
