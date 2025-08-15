@@ -3,6 +3,7 @@ import { BarChart3, History, BookOpen } from 'lucide-react';
 import { ProductionOptimizer } from './ProductionOptimizer';
 import { TrainingHistory } from './TrainingHistory';
 import { Documentation } from './Documentation';
+import { ModeToggle } from './ThemeToggle';
 
 interface LayoutProps {
   onLogout: () => void;
@@ -17,17 +18,18 @@ export const Layout: React.FC<LayoutProps> = ({ onLogout, children }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-background text-foreground">
       {/* Header */}
-      <header className="bg-white shadow">
+      <header className="bg-card shadow">
         <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center">
-            <h1 className="text-3xl font-bold text-gray-900">Weavewise</h1>
+            <h1 className="text-3xl font-bold text-foreground">Weavewise</h1>
             <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-500">Sistema de Otimização Têxtil</span>
+              <span className="text-sm text-muted-foreground">Sistema de Otimização Têxtil</span>
+              <ModeToggle />
               <button
                 onClick={onLogout}
-                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+                className="px-4 py-2 bg-destructive text-destructive-foreground rounded-md hover:bg-destructive/90 transition-colors"
               >
                 Sair
               </button>
@@ -37,15 +39,15 @@ export const Layout: React.FC<LayoutProps> = ({ onLogout, children }) => {
       </header>
 
       {/* Navigation */}
-      <nav className="bg-white shadow-sm">
+      <nav className="bg-card shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex space-x-8">
             <button
               onClick={() => handleViewChange('optimization')}
               className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center ${
                 currentView === 'optimization'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
               }`}
             >
               <BarChart3 className="h-5 w-5 mr-2" />
@@ -56,8 +58,8 @@ export const Layout: React.FC<LayoutProps> = ({ onLogout, children }) => {
               onClick={() => handleViewChange('training')}
               className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center ${
                 currentView === 'training'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
               }`}
             >
               <History className="h-5 w-5 mr-2" />
@@ -68,8 +70,8 @@ export const Layout: React.FC<LayoutProps> = ({ onLogout, children }) => {
               onClick={() => handleViewChange('documentation')}
               className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center ${
                 currentView === 'documentation'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
               }`}
             >
               <BookOpen className="h-5 w-5 mr-2" />
