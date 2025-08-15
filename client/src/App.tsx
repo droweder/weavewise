@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Auth } from './components/Auth';
 import { Layout } from './components/Layout';
 import { realApiService } from './services/realApiService';
+import { ThemeProvider } from './components/ThemeProvider';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -76,13 +77,15 @@ function App() {
   }
 
   return (
-    <div className="App">
-      {isAuthenticated ? (
-        <Layout onLogout={handleLogout} />
-      ) : (
-        <Auth onAuthSuccess={handleAuthSuccess} />
-      )}
-    </div>
+    <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+      <div className="App">
+        {isAuthenticated ? (
+          <Layout onLogout={handleLogout} />
+        ) : (
+          <Auth onAuthSuccess={handleAuthSuccess} />
+        )}
+      </div>
+    </ThemeProvider>
   );
 }
 
