@@ -65,18 +65,26 @@ export const OptimizationResults: React.FC<OptimizationResultsProps> = ({
   onItemUpdate 
 }) => {
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
-  const [editedValue, setEditedValue] = useState<number>(0);
+  const [editedValues, setEditedValues] = useState({ qtd_otimizada: 0, camadas: 0 });
 
   const handleEditStart = (item: ProductionItem) => {
     setEditingItemId(item.id);
-    setEditedValue(item.qtd_otimizada || item.qtd);
+    setEditedValues({
+      qtd_otimizada: item.qtd_otimizada || item.qtd,
+      camadas: detectLayers(items, item),
+    });
   };
 
   const handleEditSave = (item: ProductionItem) => {
     if (editingItemId !== null) {
-      const updatedItems = items.map(i => 
-        i.id === item.id ? { ...i, qtd_otimizada: editedValue } : i
-      );
+      const updatedItems = items.map(i => {
+        if (i.id === item.id) {
+          const newItem = { ...i, qtd_otimizada: editedValues.qtd_otimizada };
+          newItem.diferenca = newItem.qtd_otimizada - newItem.qtd;
+          return newItem;
+        }
+        return i;
+      });
       onItemUpdate(updatedItems);
       setEditingItemId(null);
     }
@@ -86,11 +94,21 @@ export const OptimizationResults: React.FC<OptimizationResultsProps> = ({
     setEditingItemId(null);
   };
 
-  const handleValueChange = (value: number, item: ProductionItem) => {
-    const updatedItems = items.map(i => 
-      i.id === item.id ? { ...i, qtd_otimizada: value } : i
-    );
-    onItemUpdate(updatedItems);
+  const handleEditedValueChange = (
+    item: ProductionItem,
+    field: 'qtd_otimizada' | 'camadas',
+    value: number
+  ) => {
+    const newValues = { ...editedValues, [field]: value };
+
+    if (field === 'camadas') {
+      const originalRepeticoes = Math.round(
+        (item.qtd_otimizada || item.qtd) / Math.max(1, detectLayers(items, item))
+      );
+      newValues.qtd_otimizada = value * originalRepeticoes;
+    }
+
+    setEditedValues(newValues);
   };
 
   // Calcular estatísticas
@@ -176,18 +194,61 @@ export const OptimizationResults: React.FC<OptimizationResultsProps> = ({
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {editingItemId === item.id ? (
+                    <input
+                      type="number"
+                      value={editedValues.qtd_otimizada}
+                      onChange={(e) => handleEditedValueChange(item, 'qtd_otimizada', Number(e.target.value))}
+                      className="w-20 rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                      autoFocus
+                      min="0"
+                    />
+                  ) : (
+                    <span className={item.qtd_otimizada !== item.qtd ? 'font-semibold' : ''}>
+                      {item.qtd_otimizada}
+                    </span>
+                  )}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {editingItemId === item.id ? (
+                    <input
+                      type="number"
+                      value={editedValues.camadas}
+                      onChange={(e) => handleEditedValueChange(item, 'camadas', Number(e.target.value))}
+                      className="w-20 rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                      min="0"
+                    />
+                  ) : (
+                    <span className="font-semibold text-green-600">
+                      {detectLayers(items, item)}
+                    </span>
+                  )}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <span className="font-semibold text-blue-600">
+                    {editingItemId === item.id
+                      ? Math.round(editedValues.qtd_otimizada / Math.max(1, editedValues.camadas))
+                      : Math.round((item.qtd_otimizada || item.qtd) / Math.max(1, detectLayers(items, item)))}
+                  </span>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                  <span className={
+                    (editingItemId === item.id ? editedValues.qtd_otimizada - item.qtd : item.diferenca || 0) > 0
+                      ? 'text-green-600 font-semibold' 
+                      : (editingItemId === item.id ? editedValues.qtd_otimizada - item.qtd : item.diferenca || 0) < 0
+                        ? 'text-red-600 font-semibold' 
+                        : 'text-gray-500'
+                  }>
+                    {editingItemId === item.id
+                      ? (editedValues.qtd_otimizada - item.qtd > 0 ? '+' : '') + (editedValues.qtd_otimizada - item.qtd)
+                      : (item.diferenca && item.diferenca > 0 ? `+${item.diferenca}` : item.diferenca || '0')}
+                  </span>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                  {editingItemId === item.id ? (
                     <div className="flex items-center">
-                      <input
-                        type="number"
-                        value={editedValue}
-                        onChange={(e) => setEditedValue(Number(e.target.value))}
-                        className="w-20 rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                        autoFocus
-                        min="0"
-                      />
                       <button
                         onClick={() => handleEditSave(item)}
-                        className="ml-2 text-green-600 hover:text-green-900"
+                        className="text-green-600 hover:text-green-900"
                       >
                         <Save className="h-4 w-4" />
                       </button>
@@ -199,36 +260,6 @@ export const OptimizationResults: React.FC<OptimizationResultsProps> = ({
                       </button>
                     </div>
                   ) : (
-                    <span className={item.qtd_otimizada !== item.qtd ? 'font-semibold' : ''}>
-                      {item.qtd_otimizada}
-                    </span>
-                  )}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  <span className="font-semibold text-green-600">
-                    {detectLayers(items, item)}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  <span className="font-semibold text-blue-600">
-                    {Math.round((item.qtd_otimizada || item.qtd) / Math.max(1, detectLayers(items, item)))}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm">
-                  <span className={
-                    item.diferenca && item.diferenca > 0 
-                      ? 'text-green-600 font-semibold' 
-                      : item.diferenca && item.diferenca < 0 
-                        ? 'text-red-600 font-semibold' 
-                        : 'text-gray-500'
-                  }>
-                    {item.diferenca !== undefined ? (
-                      item.diferenca > 0 ? `+${item.diferenca}` : item.diferenca
-                    ) : '0'}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm">
-                  {editingItemId === item.id ? null : (
                     <button
                       onClick={() => handleEditStart(item)}
                       className="text-blue-600 hover:text-blue-900"
