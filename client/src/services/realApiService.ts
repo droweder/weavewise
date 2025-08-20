@@ -9,15 +9,26 @@ class RealApiService {
 
   async optimizeProduction(items: ProductionItem[], tolerance: number): Promise<any> {
     try {
-      // Obter o usuário atual
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Usuário não autenticado');
 
-      const result = this.enfestoOptimization(items, tolerance);
+      const { data: modelData, error: modelError } = await supabase
+        .from('model_weights')
+        .select('weights')
+        .eq('user_id', user.id)
+        .eq('is_active', true)
+        .single();
+
+      let result;
+      if (modelError || !modelData) {
+        // No model found, use rule-based optimization
+        result = this.enfestoOptimization(items, tolerance);
+      } else {
+        // Model found, use hybrid optimization
+        result = this.hybridOptimization(items, tolerance, modelData.weights);
+      }
       
-      // Registrar log de otimização
       await this.logOptimization(user.id, tolerance, items.length, result);
-      
       return result;
     } catch (error) {
       console.error('Erro na otimização:', error);
@@ -25,117 +36,161 @@ class RealApiService {
     }
   }
 
-  private enfestoOptimization(items: ProductionItem[], tolerance: number) {
+  private hybridOptimization(items: ProductionItem[], tolerance: number, modelWeights: any) {
     const groups: Record<string, ProductionItem[]> = {};
-
-    // 1. Group items by Referência and Cor
     items.forEach(item => {
       const key = `${item.referencia}-${item.cor}`;
-      if (!groups[key]) {
-        groups[key] = [];
-      }
+      if (!groups[key]) groups[key] = [];
       groups[key].push(item);
     });
 
-    const optimizedItems: ProductionItem[] = [];
-    const optimizationDetails: Record<string, { bestStackHeight: number }> = {};
+    let optimizedItems: ProductionItem[] = [];
+    const optimizationDetails: Record<string, any> = {};
 
-    // 2. Process each group
     for (const key in groups) {
       const groupItems = groups[key];
-      const quantities = groupItems.map(i => i.qtd);
+      const groupQuantities = groupItems.map(i => i.qtd);
 
-      // Find the best stack height for the group
-      const bestStackHeight = this.findBestStackHeight(quantities, tolerance);
-      optimizationDetails[key] = { bestStackHeight };
-      
-      // 3. Optimize quantities based on the best stack height
-      const optimizedGroupItems = groupItems.map(item => {
-        // Only optimize if a valid stack height > 1 was found
-        if (bestStackHeight > 1) {
-          const originalQtd = item.qtd;
-          // Find the nearest multiple of bestStackHeight
-          let optimizedQtd = Math.round(originalQtd / bestStackHeight) * bestStackHeight;
+      let groupOptimized = false;
+      let methodUsed = 'Nenhum';
 
-          // Ensure optimized quantity is at least the stack height itself if original is not zero
-          if (originalQtd > 0 && optimizedQtd === 0) {
-            optimizedQtd = bestStackHeight;
+      // 1. Try model-based optimization first
+      if (modelWeights.learnedLayers && modelWeights.learnedLayers[key]) {
+        const layers = modelWeights.learnedLayers[key];
+        methodUsed = `Modelo (${layers} camadas)`;
+        let isModelPredictionValid = true;
+
+        for (const item of groupItems) {
+          const adjustedQuantity = this.adjustToLayers(item.qtd, layers);
+          const difference = Math.abs(adjustedQuantity - item.qtd);
+          if (item.qtd > 0 && (difference / item.qtd) > (tolerance / 100)) {
+            isModelPredictionValid = false;
+            methodUsed += ' - Tolerância violada';
+            break;
           }
-
-          const difference = optimizedQtd - originalQtd;
-
-          return {
-            ...item,
-            qtd_otimizada: optimizedQtd,
-            diferenca: difference,
-            editavel: true,
-          };
-        } else {
-          // If no good stack height is found, return original quantities
-          return {
-            ...item,
-            qtd_otimizada: item.qtd,
-            diferenca: 0,
-            editavel: true,
-          };
         }
-      });
-      optimizedItems.push(...optimizedGroupItems);
+
+        if (isModelPredictionValid) {
+          const optimizedGroup = groupItems.map(item => {
+            const adjustedQuantity = this.adjustToLayers(item.qtd, layers);
+            let finalOptimizedQuantity = adjustedQuantity;
+            if (item.qtd > 0 && finalOptimizedQuantity === 0) {
+              finalOptimizedQuantity = layers;
+            }
+            return {
+              ...item,
+              qtd_otimizada: finalOptimizedQuantity,
+              diferenca: finalOptimizedQuantity - item.qtd,
+            };
+          });
+          optimizedItems.push(...optimizedGroup);
+          groupOptimized = true;
+          optimizationDetails[key] = { bestStackHeight: layers, method: methodUsed };
+        }
+      }
+
+      // 2. If model-based failed or didn't apply, use rule-based fallback
+      if (!groupOptimized) {
+        const bestStackHeight = this.findBestStackHeight(groupQuantities, tolerance);
+        methodUsed = `Regras (${bestStackHeight} camadas)`;
+
+        const optimizedGroup = groupItems.map(item => {
+          if (bestStackHeight > 1) {
+            const optimizedQtd = Math.round(item.qtd / bestStackHeight) * bestStackHeight;
+            const finalOptimizedQtd = (item.qtd > 0 && optimizedQtd === 0) ? bestStackHeight : optimizedQtd;
+            return {
+              ...item,
+              qtd_otimizada: finalOptimizedQtd,
+              diferenca: finalOptimizedQtd - item.qtd,
+            };
+          } else {
+            return { ...item, qtd_otimizada: item.qtd, diferenca: 0 };
+          }
+        });
+        optimizedItems.push(...optimizedGroup);
+        optimizationDetails[key] = { bestStackHeight, method: methodUsed };
+      }
     }
 
     const summary = {
-      total_items: optimizedItems.length,
       increases: optimizedItems.filter(item => (item.diferenca || 0) > 0).length,
       decreases: optimizedItems.filter(item => (item.diferenca || 0) < 0).length,
       unchanged: optimizedItems.filter(item => (item.diferenca || 0) === 0).length,
       optimizationDetails,
     };
 
-    return {
-      success: true,
-      items: optimizedItems,
-      summary
+    return { success: true, items: optimizedItems, summary };
+  }
+
+  private enfestoOptimization(items: ProductionItem[], tolerance: number) {
+    // This is the standalone rule-based optimization
+    const groups: Record<string, ProductionItem[]> = {};
+    items.forEach(item => {
+      const key = `${item.referencia}-${item.cor}`;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(item);
+    });
+
+    let optimizedItems: ProductionItem[] = [];
+    const optimizationDetails: Record<string, any> = {};
+
+    for (const key in groups) {
+        const groupItems = groups[key];
+        const groupQuantities = groupItems.map(i => i.qtd);
+        const bestStackHeight = this.findBestStackHeight(groupQuantities, tolerance);
+        optimizationDetails[key] = { bestStackHeight, method: 'Regras' };
+
+        const optimizedGroup = groupItems.map(item => {
+          if (bestStackHeight > 1) {
+            const optimizedQtd = Math.round(item.qtd / bestStackHeight) * bestStackHeight;
+            const finalOptimizedQtd = (item.qtd > 0 && optimizedQtd === 0) ? bestStackHeight : optimizedQtd;
+            return {
+              ...item,
+              qtd_otimizada: finalOptimizedQtd,
+              diferenca: finalOptimizedQtd - item.qtd,
+            };
+          } else {
+            return { ...item, qtd_otimizada: item.qtd, diferenca: 0 };
+          }
+        });
+        optimizedItems.push(...optimizedGroup);
+    }
+
+    const summary = {
+      increases: optimizedItems.filter(item => (item.diferenca || 0) > 0).length,
+      decreases: optimizedItems.filter(item => (item.diferenca || 0) < 0).length,
+      unchanged: optimizedItems.filter(item => (item.diferenca || 0) === 0).length,
+      optimizationDetails,
     };
+
+    return { success: true, items: optimizedItems, summary };
   }
 
   private findBestStackHeight(quantities: number[], tolerance: number): number {
-    // The initial GCD is a candidate, with zero cost.
     const originalGcd = this.gcdMultiple(quantities.filter(q => q > 0));
     let bestHeight = originalGcd > 1 ? originalGcd : 1;
 
-    // Common stack heights in the industry, plus some other candidates
     const candidateHeights = [12, 18, 24, 30, 36, 42, 48, 54, 60, 72, 84, 96, 108, 120, 144];
-
     const uniqueCandidateHeights = [...new Set(candidateHeights)].sort((a,b) => b-a);
 
     for (const height of uniqueCandidateHeights) {
-      // Don't bother checking heights that are not better than what we already have
       if (height <= bestHeight) continue;
-
       let isHeightValid = true;
       for (const qtd of quantities) {
-        if (qtd === 0) continue; // Skip zero quantities
-
+        if (qtd === 0) continue;
         const adjustedQtd = Math.round(qtd / height) * height;
         const difference = Math.abs(adjustedQtd - qtd);
-
-        // Check if the adjustment is within tolerance
         if ((difference / qtd) > (tolerance / 100)) {
           isHeightValid = false;
           break;
         }
       }
-
       if (isHeightValid) {
-          // Since we are iterating from high to low, the first valid height is the highest possible.
-          // This aligns with "encontre a maior 'altura de enfesto' (MDC) possível".
           bestHeight = height;
-          // We can return immediately because we iterate downwards, so the first valid one is the highest.
           return bestHeight;
       }
     }
-
-    return bestHeight; // Return the best height found (could be the original GCD or 1)
+    return bestHeight;
   }
 
   // Calcular MDC (Máximo Divisor Comum) entre dois números
@@ -261,7 +316,6 @@ class RealApiService {
     linesProcessed: number, 
     result: any
   ) {
-    // Pass the whole summary object to be stored in the jsonb column
     const summary = result.summary;
 
     await supabase
