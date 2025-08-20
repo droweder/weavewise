@@ -13,67 +13,22 @@ class RealApiService {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Usuário não autenticado');
 
-      // Obter o modelo ativo do usuário
-      const { data: modelData, error: modelError } = await supabase
-        .from('model_weights')
-        .select('weights')
-        .eq('user_id', user.id)
-        .eq('is_active', true)
-        .single();
-
-      if (modelError || !modelData) {
-        // Se não houver modelo, usar otimização básica
-        return this.basicOptimization(items, tolerance);
-      }
-
-      // Aplicar otimização baseada no modelo
-      const optimizedItems = this.modelBasedOptimization(items, tolerance, modelData.weights);
+      const result = this.enfestoOptimization(items, tolerance);
       
       // Registrar log de otimização
-      await this.logOptimization(user.id, tolerance, items.length, optimizedItems);
+      await this.logOptimization(user.id, tolerance, items.length, result);
       
-      return optimizedItems;
+      return result;
     } catch (error) {
       console.error('Erro na otimização:', error);
       throw error;
     }
   }
 
-  private basicOptimization(items: ProductionItem[], tolerance: number) {
-    const optimizedItems = items.map(item => {
-      // Simular variação baseada em padrões históricos
-      const variation = (Math.random() - 0.5) * 2 * (tolerance / 100);
-      const qtd_otimizada = Math.max(1, Math.round(item.qtd * (1 + variation)));
-      const diferenca = qtd_otimizada - item.qtd;
-      
-      return {
-        ...item,
-        qtd_otimizada,
-        diferenca,
-        editavel: true
-      };
-    });
-
-    const summary = {
-      total_items: optimizedItems.length,
-      increases: optimizedItems.filter(item => (item.diferenca || 0) > 0).length,
-      decreases: optimizedItems.filter(item => (item.diferenca || 0) < 0).length,
-      unchanged: optimizedItems.filter(item => (item.diferenca || 0) === 0).length
-    };
-
-    return {
-      success: true,
-      items: optimizedItems,
-      summary
-    };
-  }
-
-  private modelBasedOptimization(items: ProductionItem[], tolerance: number, modelWeights: any) {
-    // Primeiro, pré-calcular o MDC para cada grupo de Referencia+Cor nos itens de entrada.
-    // Isso evita recalcular o MDC para cada item no loop.
-    const inputGroupLayers: Record<string, number> = {};
+  private enfestoOptimization(items: ProductionItem[], tolerance: number) {
     const groups: Record<string, ProductionItem[]> = {};
 
+    // 1. Group items by Referência and Cor
     items.forEach(item => {
       const key = `${item.referencia}-${item.cor}`;
       if (!groups[key]) {
@@ -82,34 +37,58 @@ class RealApiService {
       groups[key].push(item);
     });
 
-    Object.keys(groups).forEach(key => {
+    const optimizedItems: ProductionItem[] = [];
+    const optimizationDetails: Record<string, { bestStackHeight: number }> = {};
+
+    // 2. Process each group
+    for (const key in groups) {
       const groupItems = groups[key];
       const quantities = groupItems.map(i => i.qtd);
-      inputGroupLayers[key] = this.gcdMultiple(quantities);
-    });
 
-    const optimizedItems = items.map(item => {
-      // Aplicar o modelo treinado para cada item
-      const prediction = this.predictOptimalQuantity(item, modelWeights, tolerance, inputGroupLayers);
-      const qtd_otimizada = Math.max(1, prediction.optimizedQuantity);
-      const diferenca = qtd_otimizada - item.qtd;
+      // Find the best stack height for the group
+      const bestStackHeight = this.findBestStackHeight(quantities, tolerance);
+      optimizationDetails[key] = { bestStackHeight };
       
-      return {
-        ...item,
-        qtd_otimizada,
-        diferenca,
-        editavel: true,
-        confidence: prediction.confidence,
-        factors: prediction.factors
-      };
-    });
+      // 3. Optimize quantities based on the best stack height
+      const optimizedGroupItems = groupItems.map(item => {
+        // Only optimize if a valid stack height > 1 was found
+        if (bestStackHeight > 1) {
+          const originalQtd = item.qtd;
+          // Find the nearest multiple of bestStackHeight
+          let optimizedQtd = Math.round(originalQtd / bestStackHeight) * bestStackHeight;
+
+          // Ensure optimized quantity is at least the stack height itself if original is not zero
+          if (originalQtd > 0 && optimizedQtd === 0) {
+            optimizedQtd = bestStackHeight;
+          }
+
+          const difference = optimizedQtd - originalQtd;
+
+          return {
+            ...item,
+            qtd_otimizada: optimizedQtd,
+            diferenca: difference,
+            editavel: true,
+          };
+        } else {
+          // If no good stack height is found, return original quantities
+          return {
+            ...item,
+            qtd_otimizada: item.qtd,
+            diferenca: 0,
+            editavel: true,
+          };
+        }
+      });
+      optimizedItems.push(...optimizedGroupItems);
+    }
 
     const summary = {
       total_items: optimizedItems.length,
       increases: optimizedItems.filter(item => (item.diferenca || 0) > 0).length,
       decreases: optimizedItems.filter(item => (item.diferenca || 0) < 0).length,
       unchanged: optimizedItems.filter(item => (item.diferenca || 0) === 0).length,
-      avg_confidence: optimizedItems.reduce((acc, item) => acc + (item.confidence || 0), 0) / optimizedItems.length
+      optimizationDetails,
     };
 
     return {
@@ -119,61 +98,44 @@ class RealApiService {
     };
   }
 
-  private predictOptimalQuantity(
-    item: ProductionItem,
-    modelWeights: any,
-    tolerance: number,
-    inputGroupLayers: Record<string, number>
-  ) {
-    let optimizedQuantity = item.qtd;
-    let confidence = 0.0;
-    let factors: string[] = [];
-    let layers = 0;
+  private findBestStackHeight(quantities: number[], tolerance: number): number {
+    // The initial GCD is a candidate, with zero cost.
+    const originalGcd = this.gcdMultiple(quantities.filter(q => q > 0));
+    let bestHeight = originalGcd > 1 ? originalGcd : 1;
 
-    const groupKey = `${item.referencia}-${item.cor}`;
+    // Common stack heights in the industry, plus some other candidates
+    const candidateHeights = [12, 18, 24, 30, 36, 42, 48, 54, 60, 72, 84, 96, 108, 120, 144];
 
-    // 1. Tentar encontrar camadas aprendidas no modelo treinado
-    if (modelWeights.learnedLayers && modelWeights.learnedLayers[groupKey]) {
-      layers = modelWeights.learnedLayers[groupKey];
-      confidence = 0.9;
-      factors.push(`Padrão de ${layers} camadas aprendido do histórico.`);
-    }
-    // 2. Fallback: usar o MDC do grupo de entrada atual se não houver padrão aprendido
-    else if (inputGroupLayers[groupKey] > 1) {
-      layers = inputGroupLayers[groupKey];
-      confidence = 0.5;
-      factors.push(`MDC de ${layers} camadas detectado no grupo de entrada atual.`);
-    }
-    // 3. Fallback final: usar o padrão global do modelo
-    else if (modelWeights.globalDefaultLayer) {
-      layers = modelWeights.globalDefaultLayer;
-      confidence = 0.2;
-      factors.push(`Usando padrão global de ${layers} camadas.`);
-    }
-    // 4. Se tudo falhar, não otimizar
-    else {
-      factors.push('Nenhum padrão aplicável encontrado.');
-      return { optimizedQuantity: item.qtd, confidence: 0, factors, layers: 0 };
+    const uniqueCandidateHeights = [...new Set(candidateHeights)].sort((a,b) => b-a);
+
+    for (const height of uniqueCandidateHeights) {
+      // Don't bother checking heights that are not better than what we already have
+      if (height <= bestHeight) continue;
+
+      let isHeightValid = true;
+      for (const qtd of quantities) {
+        if (qtd === 0) continue; // Skip zero quantities
+
+        const adjustedQtd = Math.round(qtd / height) * height;
+        const difference = Math.abs(adjustedQtd - qtd);
+
+        // Check if the adjustment is within tolerance
+        if ((difference / qtd) > (tolerance / 100)) {
+          isHeightValid = false;
+          break;
+        }
+      }
+
+      if (isHeightValid) {
+          // Since we are iterating from high to low, the first valid height is the highest possible.
+          // This aligns with "encontre a maior 'altura de enfesto' (MDC) possível".
+          bestHeight = height;
+          // We can return immediately because we iterate downwards, so the first valid one is the highest.
+          return bestHeight;
+      }
     }
 
-    // Calcular a quantidade otimizada usando a fórmula de teto
-    optimizedQuantity = this.adjustToLayers(item.qtd, layers);
-
-    // Aplicar tolerância (opcional, pode ser removido se não for desejado)
-    if (tolerance > 0) {
-      const toleranceRange = tolerance / 100;
-      const variation = Math.round((Math.random() - 0.5) * 2 * toleranceRange * layers);
-      optimizedQuantity = Math.max(layers, optimizedQuantity + variation);
-      // Reajustar para garantir que ainda é um múltiplo
-      optimizedQuantity = Math.round(optimizedQuantity / layers) * layers;
-    }
-    
-    return {
-      optimizedQuantity: Math.max(1, optimizedQuantity),
-      confidence,
-      factors,
-      layers
-    };
+    return bestHeight; // Return the best height found (could be the original GCD or 1)
   }
 
   // Calcular MDC (Máximo Divisor Comum) entre dois números
@@ -299,11 +261,8 @@ class RealApiService {
     linesProcessed: number, 
     result: any
   ) {
-    const summary = {
-      aumentos: result.summary.increases,
-      diminuicoes: result.summary.decreases,
-      inalterados: result.summary.unchanged
-    };
+    // Pass the whole summary object to be stored in the jsonb column
+    const summary = result.summary;
 
     await supabase
       .from('optimization_logs')
