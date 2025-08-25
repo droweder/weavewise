@@ -1209,25 +1209,8 @@ class RealApiService {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Usuário não autenticado');
 
-      // Excluir dados de treinamento relacionados
-      const { error: trainingDataError } = await supabase
-        .from('training_data')
-        .delete()
-        .eq('user_id', user.id);
-
-      if (trainingDataError) {
-        console.error('Erro ao excluir dados de treinamento:', trainingDataError);
-      }
-
-      // Excluir modelo treinado do Supabase
-      const { error: modelError } = await supabase
-        .from('model_weights')
-        .delete()
-        .eq('user_id', user.id);
-
-      if (modelError) {
-        console.error('Erro ao excluir modelo:', modelError);
-      }
+      // Não excluir dados de treinamento e modelos, apenas a sessão
+      // para evitar a exclusão de dados de outros treinamentos.
 
       // Excluir sessão de treinamento
       const { error: sessionError } = await supabase
