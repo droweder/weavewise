@@ -1,272 +1,148 @@
 import React, { useState } from 'react';
 import { ProductionItem } from '../types';
-import { Save, X } from 'lucide-react';
-
-// Função auxiliar para calcular MDC
-const gcd = (a: number, b: number): number => {
-  return b === 0 ? a : gcd(b, a % b);
-};
-
-const gcdMultiple = (numbers: number[]): number => {
-  if (numbers.length === 0) return 1;
-  if (numbers.length === 1) return numbers[0];
-  
-  let result = numbers[0];
-  for (let i = 1; i < numbers.length; i++) {
-    result = gcd(result, numbers[i]);
-  }
-  return result;
-};
-
-// Função para detectar camadas usando MDC por referência+cor nos resultados de otimização
-const detectLayers = (items: any[], currentItem: any): number => {
-  const referencia = currentItem.referencia;
-  const cor = currentItem.cor;
-  
-  // Filtrar todos os itens da mesma referência+cor nos resultados
-  const sameRefCorItems = items.filter(item => 
-    item.referencia === referencia && item.cor === cor
-  );
-  
-  if (sameRefCorItems.length === 0) return 36;
-  
-  // Coletar quantidades OTIMIZADAS preferencialmente do grupo
-  const quantities = sameRefCorItems
-    .map(item => {
-      const qtdOtimizada = item.qtd_otimizada || 0;
-      const qtdOriginal = item.qtd || 0;
-      // Sempre usar qtd_otimizada se existir, senão usar qtd
-      return qtdOtimizada > 0 ? qtdOtimizada : qtdOriginal;
-    })
-    .filter(qtd => qtd > 0);
-  
-  if (quantities.length === 0) return 36;
-  
-  // Calcular MDC do grupo referência+cor
-  const mdc = gcdMultiple(quantities);
-  
-  // O MDC é o número correto de camadas
-  // Só validar se está dentro de um range razoável (6 a 60 camadas)
-  if (mdc >= 6 && mdc <= 60) {
-    return mdc;
-  }
-  
-  // Se MDC estiver fora do range, usar valor padrão
-  return 36;
-};
+import { Save, X, Edit, Cpu, BookOpen, ShieldCheck } from 'lucide-react';
 
 interface OptimizationResultsProps {
   items: ProductionItem[];
   onItemUpdate: (updatedItems: ProductionItem[]) => void;
+  optimizationDetails: Record<string, any> | null;
 }
 
 export const OptimizationResults: React.FC<OptimizationResultsProps> = ({ 
   items, 
-  onItemUpdate 
+  onItemUpdate,
+  optimizationDetails
 }) => {
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
-  const [editedValues, setEditedValues] = useState({ qtd_otimizada: 0, camadas: 0 });
+  const [editedValue, setEditedValue] = useState<number>(0);
 
   const handleEditStart = (item: ProductionItem) => {
     setEditingItemId(item.id);
-    setEditedValues({
-      qtd_otimizada: item.qtd_otimizada || item.qtd,
-      camadas: detectLayers(items, item),
-    });
+    setEditedValue(item.qtd_otimizada || 0);
   };
 
-  const handleEditSave = (item: ProductionItem) => {
-    if (editingItemId !== null) {
-      const updatedItems = items.map(i => {
-        if (i.id === item.id) {
-          const newItem = { ...i, qtd_otimizada: editedValues.qtd_otimizada };
-          newItem.diferenca = newItem.qtd_otimizada - newItem.qtd;
-          return newItem;
-        }
-        return i;
-      });
-      onItemUpdate(updatedItems);
-      setEditingItemId(null);
-    }
+  const handleEditSave = (itemId: string) => {
+    const updatedItems = items.map(i => {
+      if (i.id === itemId) {
+        return { ...i, qtd_otimizada: editedValue, diferenca: editedValue - i.qtd };
+      }
+      return i;
+    });
+    onItemUpdate(updatedItems);
+    setEditingItemId(null);
   };
 
   const handleEditCancel = () => {
     setEditingItemId(null);
   };
 
-  const handleEditedValueChange = (
-    item: ProductionItem,
-    field: 'qtd_otimizada' | 'camadas',
-    value: number
-  ) => {
-    const newValues = { ...editedValues, [field]: value };
+  const getMethodTag = (item: ProductionItem) => {
+    const key = `${item.referencia}-${item.cor}`;
+    const details = optimizationDetails?.[key];
 
-    if (field === 'camadas') {
-      const originalRepeticoes = Math.round(
-        (item.qtd_otimizada || item.qtd) / Math.max(1, detectLayers(items, item))
-      );
-      newValues.qtd_otimizada = value * originalRepeticoes;
+    if (!details) {
+      return <span className="text-xs text-muted-foreground">N/A</span>;
     }
 
-    setEditedValues(newValues);
+    const method = details.method || '';
+    let icon = <BookOpen className="h-3 w-3" />;
+    let color = 'bg-gray-100 text-gray-800';
+
+    if (method.includes('Modelo')) {
+      icon = <Cpu className="h-3 w-3" />;
+      color = 'bg-blue-100 text-blue-800';
+    } else if (method.includes('Tolerância')) {
+      icon = <ShieldCheck className="h-3 w-3" />;
+      color = 'bg-green-100 text-green-800';
+    }
+
+    return (
+      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${color}`}>
+        {icon}
+        <span className="ml-1">{method}</span>
+      </span>
+    );
   };
 
-  // Calcular estatísticas
   const totalOriginal = items.reduce((sum, item) => sum + item.qtd, 0);
-  const totalOtimizado = items.reduce((sum, item) => sum + (item.qtd_otimizada || item.qtd), 0);
+  const totalOtimizado = items.reduce((sum, item) => sum + (item.qtd_otimizada || 0), 0);
   const diferencaTotal = totalOtimizado - totalOriginal;
   const percentualDiferenca = totalOriginal > 0 ? (diferencaTotal / totalOriginal) * 100 : 0;
 
   return (
     <div className="space-y-6">
-      {/* Resumo estatístico */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-blue-50 rounded-lg p-4">
-          <p className="text-sm text-blue-800">Total Original</p>
-          <p className="text-2xl font-bold text-blue-900">{totalOriginal}</p>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-muted/50 rounded-lg p-4 text-center">
+          <p className="text-sm font-medium text-muted-foreground">Total Original</p>
+          <p className="text-2xl font-semibold">{totalOriginal}</p>
         </div>
-        <div className="bg-green-50 rounded-lg p-4">
-          <p className="text-sm text-green-800">Total Otimizado</p>
-          <p className="text-2xl font-bold text-green-900">{totalOtimizado}</p>
+        <div className="bg-muted/50 rounded-lg p-4 text-center">
+          <p className="text-sm font-medium text-muted-foreground">Total Otimizado</p>
+          <p className="text-2xl font-semibold">{totalOtimizado}</p>
         </div>
-        <div className={`rounded-lg p-4 ${diferencaTotal >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
-          <p className="text-sm text-gray-800">Diferença</p>
-          <p className={`text-2xl font-bold ${diferencaTotal >= 0 ? 'text-green-900' : 'text-red-900'}`}>
+        <div className={`bg-muted/50 rounded-lg p-4 text-center`}>
+          <p className="text-sm font-medium text-muted-foreground">Diferença</p>
+          <p className={`text-2xl font-semibold ${diferencaTotal >= 0 ? 'text-green-600' : 'text-destructive'}`}>
             {diferencaTotal >= 0 ? '+' : ''}{diferencaTotal}
           </p>
         </div>
-        <div className={`rounded-lg p-4 ${percentualDiferenca >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
-          <p className="text-sm text-gray-800">Variação (%)</p>
-          <p className={`text-2xl font-bold ${percentualDiferenca >= 0 ? 'text-green-900' : 'text-red-900'}`}>
+        <div className={`bg-muted/50 rounded-lg p-4 text-center`}>
+          <p className="text-sm font-medium text-muted-foreground">Variação (%)</p>
+          <p className={`text-2xl font-semibold ${percentualDiferenca >= 0 ? 'text-green-600' : 'text-destructive'}`}>
             {percentualDiferenca >= 0 ? '+' : ''}{percentualDiferenca.toFixed(2)}%
           </p>
         </div>
       </div>
 
-      {/* Tabela de resultados */}
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+      <div className="overflow-x-auto border rounded-lg">
+        <table className="min-w-full divide-y divide-border">
+          <thead className="bg-muted/50">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Referência
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Tamanho
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Cor
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Qtd Original
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Qtd Otimizada
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Camadas
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Repetições
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Diferença
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Ações
-              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Referência</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Tamanho</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Cor</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Qtd Original</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Qtd Otimizada</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Diferença</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Método</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Ações</th>
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
+          <tbody className="bg-card divide-y divide-border">
             {items.map((item) => (
-              <tr key={item.id} className="hover:bg-gray-50">
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  {item.referencia}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {item.tamanho}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {item.cor}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {item.qtd}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+              <tr key={item.id} className="hover:bg-muted/50">
+                <td className="px-4 py-4 whitespace-nowrap text-sm font-medium">{item.referencia}</td>
+                <td className="px-4 py-4 whitespace-nowrap text-sm text-muted-foreground">{item.tamanho}</td>
+                <td className="px-4 py-4 whitespace-nowrap text-sm text-muted-foreground">{item.cor}</td>
+                <td className="px-4 py-4 whitespace-nowrap text-sm text-muted-foreground">{item.qtd}</td>
+                <td className="px-4 py-4 whitespace-nowrap text-sm">
                   {editingItemId === item.id ? (
                     <input
                       type="number"
-                      value={editedValues.qtd_otimizada}
-                      onChange={(e) => handleEditedValueChange(item, 'qtd_otimizada', Number(e.target.value))}
-                      className="w-20 rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                      value={editedValue}
+                      onChange={(e) => setEditedValue(Number(e.target.value))}
+                      className="w-24 p-1 rounded border-input bg-background shadow-sm focus:border-primary focus:ring-primary"
                       autoFocus
                       min="0"
                     />
                   ) : (
-                    <span className={item.qtd_otimizada !== item.qtd ? 'font-semibold' : ''}>
-                      {item.qtd_otimizada}
-                    </span>
+                    <span className={item.diferenca !== 0 ? 'font-semibold' : ''}>{item.qtd_otimizada}</span>
                   )}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {editingItemId === item.id ? (
-                    <input
-                      type="number"
-                      value={editedValues.camadas}
-                      onChange={(e) => handleEditedValueChange(item, 'camadas', Number(e.target.value))}
-                      className="w-20 rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                      min="0"
-                    />
-                  ) : (
-                    <span className="font-semibold text-green-600">
-                      {detectLayers(items, item)}
-                    </span>
-                  )}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  <span className="font-semibold text-blue-600">
-                    {editingItemId === item.id
-                      ? Math.round(editedValues.qtd_otimizada / Math.max(1, editedValues.camadas))
-                      : Math.round((item.qtd_otimizada || item.qtd) / Math.max(1, detectLayers(items, item)))}
+                <td className="px-4 py-4 whitespace-nowrap text-sm">
+                  <span className={item.diferenca > 0 ? 'text-green-600 font-semibold' : item.diferenca < 0 ? 'text-destructive font-semibold' : 'text-muted-foreground'}>
+                    {item.diferenca > 0 ? `+${item.diferenca}` : item.diferenca}
                   </span>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm">
-                  <span className={
-                    (editingItemId === item.id ? editedValues.qtd_otimizada - item.qtd : item.diferenca || 0) > 0
-                      ? 'text-green-600 font-semibold' 
-                      : (editingItemId === item.id ? editedValues.qtd_otimizada - item.qtd : item.diferenca || 0) < 0
-                        ? 'text-red-600 font-semibold' 
-                        : 'text-gray-500'
-                  }>
-                    {editingItemId === item.id
-                      ? (editedValues.qtd_otimizada - item.qtd > 0 ? '+' : '') + (editedValues.qtd_otimizada - item.qtd)
-                      : (item.diferenca && item.diferenca > 0 ? `+${item.diferenca}` : item.diferenca || '0')}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                <td className="px-4 py-4 whitespace-nowrap text-sm">{getMethodTag(item)}</td>
+                <td className="px-4 py-4 whitespace-nowrap text-sm">
                   {editingItemId === item.id ? (
-                    <div className="flex items-center">
-                      <button
-                        onClick={() => handleEditSave(item)}
-                        className="text-green-600 hover:text-green-900"
-                      >
-                        <Save className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={handleEditCancel}
-                        className="ml-1 text-red-600 hover:text-red-900"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
+                    <div className="flex items-center space-x-2">
+                      <button onClick={() => handleEditSave(item.id)} className="text-green-600 hover:text-green-700"><Save className="h-4 w-4" /></button>
+                      <button onClick={handleEditCancel} className="text-destructive hover:text-destructive/80"><X className="h-4 w-4" /></button>
                     </div>
                   ) : (
-                    <button
-                      onClick={() => handleEditStart(item)}
-                      className="text-blue-600 hover:text-blue-900"
-                      disabled={!item.editavel}
-                    >
-                      Editar
-                    </button>
+                    <button onClick={() => handleEditStart(item)} className="text-primary hover:text-primary/80" disabled={!item.editavel}><Edit className="h-4 w-4" /></button>
                   )}
                 </td>
               </tr>

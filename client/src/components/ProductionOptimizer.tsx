@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 export const ProductionOptimizer: React.FC = () => {
   const [items, setItems] = useState<ProductionItem[]>([]);
   const [optimizedItems, setOptimizedItems] = useState<ProductionItem[]>([]);
+  const [optimizationDetails, setOptimizationDetails] = useState<Record<string, any> | null>(null);
   const [tolerance, setTolerance] = useState<number>(5);
   const [isOptimizing, setIsOptimizing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,6 +66,7 @@ export const ProductionOptimizer: React.FC = () => {
       const result = await realApiService.optimizeProduction(items, tolerance);
       if (result.success) {
         setOptimizedItems(result.items);
+        setOptimizationDetails(result.summary.optimizationDetails);
         setSuccess(`Otimização concluída! ${result.summary.increases} aumentos, ${result.summary.decreases} diminuições.`);
       } else {
         setError('Falha na otimização.');
@@ -104,6 +106,7 @@ export const ProductionOptimizer: React.FC = () => {
   const handleReset = () => {
     setItems([]);
     setOptimizedItems([]);
+    setOptimizationDetails(null);
     setError(null);
     setSuccess(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -124,6 +127,7 @@ export const ProductionOptimizer: React.FC = () => {
     ];
     setItems(sampleItems);
     setOptimizedItems([]);
+    setOptimizationDetails(null);
     setError(null);
     setSuccess('Exemplo de dados de enfesto carregado!');
   };
@@ -186,7 +190,11 @@ export const ProductionOptimizer: React.FC = () => {
           {optimizedItems.length > 0 ? (
             <div>
               <h3 className="text-lg font-medium text-foreground mb-4">Dados Otimizados</h3>
-              <OptimizationResults items={optimizedItems} onItemUpdate={setOptimizedItems} />
+              <OptimizationResults
+                items={optimizedItems}
+                onItemUpdate={setOptimizedItems}
+                optimizationDetails={optimizationDetails}
+              />
             </div>
           ) : items.length > 0 ? (
             <div>

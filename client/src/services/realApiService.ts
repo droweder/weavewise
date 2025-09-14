@@ -46,70 +46,57 @@ class RealApiService {
 
     let optimizedItems: ProductionItem[] = [];
     const optimizationDetails: Record<string, any> = {};
+    const CONFIDENCE_THRESHOLD = 0.75;
 
     for (const key in groups) {
       const groupItems = groups[key];
-      const groupQuantities = groupItems.map(i => i.qtd);
+      let bestStackHeight = modelWeights.globalDefaultLayer || 36;
+      let methodUsed = 'Padrão Global';
 
-      let groupOptimized = false;
-      let methodUsed = 'Nenhum';
+      const pattern = modelWeights.learnedPatterns?.[key];
+      if (pattern && pattern.confidence >= CONFIDENCE_THRESHOLD) {
+        bestStackHeight = pattern.mdc;
+        methodUsed = `Modelo (Confiança: ${pattern.confidence * 100}%)`;
+      } else if (pattern) {
+        bestStackHeight = pattern.mdc;
+        methodUsed = `Modelo (Baixa Confiança: ${pattern.confidence * 100}%)`;
+      }
 
-      // 1. Try model-based optimization first
-      if (modelWeights.learnedLayers && modelWeights.learnedLayers[key]) {
-        const layers = modelWeights.learnedLayers[key];
-        methodUsed = `Modelo (${layers} camadas)`;
-        let isModelPredictionValid = true;
-
-        for (const item of groupItems) {
-          const adjustedQuantity = this.adjustToLayers(item.qtd, layers);
-          const difference = Math.abs(adjustedQuantity - item.qtd);
-          if (item.qtd > 0 && (difference / item.qtd) > (tolerance / 100)) {
-            isModelPredictionValid = false;
-            methodUsed += ' - Tolerância violada';
-            break;
-          }
-        }
-
-        if (isModelPredictionValid) {
-          const optimizedGroup = groupItems.map(item => {
-            const adjustedQuantity = this.adjustToLayers(item.qtd, layers);
-            let finalOptimizedQuantity = adjustedQuantity;
-            if (item.qtd > 0 && finalOptimizedQuantity === 0) {
-              finalOptimizedQuantity = layers;
-            }
-            return {
-              ...item,
-              qtd_otimizada: finalOptimizedQuantity,
-              diferenca: finalOptimizedQuantity - item.qtd,
-            };
-          });
-          optimizedItems.push(...optimizedGroup);
-          groupOptimized = true;
-          optimizationDetails[key] = { bestStackHeight: layers, method: methodUsed };
+      // First, try to apply the determined stack height (from model or fallback)
+      let isHeightValid = true;
+      for (const item of groupItems) {
+        if (item.qtd === 0) continue;
+        const adjustedQtd = this.adjustToLayers(item.qtd, bestStackHeight);
+        const difference = Math.abs(adjustedQtd - item.qtd);
+        if ((difference / item.qtd) * 100 > tolerance) {
+          isHeightValid = false;
+          break;
         }
       }
 
-      // 2. If model-based failed or didn't apply, use rule-based fallback
-      if (!groupOptimized) {
-        const bestStackHeight = this.findBestStackHeight(groupQuantities, tolerance);
-        methodUsed = `Regras (${bestStackHeight} camadas)`;
-
-        const optimizedGroup = groupItems.map(item => {
-          if (bestStackHeight > 1) {
-            const optimizedQtd = Math.round(item.qtd / bestStackHeight) * bestStackHeight;
-            const finalOptimizedQtd = (item.qtd > 0 && optimizedQtd === 0) ? bestStackHeight : optimizedQtd;
-            return {
-              ...item,
-              qtd_otimizada: finalOptimizedQtd,
-              diferenca: finalOptimizedQtd - item.qtd,
-            };
-          } else {
-            return { ...item, qtd_otimizada: item.qtd, diferenca: 0 };
-          }
-        });
-        optimizedItems.push(...optimizedGroup);
-        optimizationDetails[key] = { bestStackHeight, method: methodUsed };
+      // If the model's suggestion violates tolerance, use the simple rule-based method
+      if (!isHeightValid) {
+        bestStackHeight = this.findBestStackHeight(groupItems.map(i => i.qtd), tolerance);
+        methodUsed = 'Regra de Tolerância';
       }
+
+      // Apply the final chosen stack height
+      const optimizedGroup = groupItems.map(item => {
+        if (bestStackHeight > 1) {
+          const optimizedQtd = this.adjustToLayers(item.qtd, bestStackHeight);
+          const finalOptimizedQtd = (item.qtd > 0 && optimizedQtd === 0) ? bestStackHeight : optimizedQtd;
+          return {
+            ...item,
+            qtd_otimizada: finalOptimizedQtd,
+            diferenca: finalOptimizedQtd - item.qtd,
+          };
+        } else {
+          return { ...item, qtd_otimizada: item.qtd, diferenca: 0 };
+        }
+      });
+
+      optimizedItems.push(...optimizedGroup);
+      optimizationDetails[key] = { bestStackHeight, method: methodUsed };
     }
 
     const summary = {
@@ -463,7 +450,7 @@ class RealApiService {
   }
 
   private async trainMLModel(data: any[]): Promise<any> {
-    console.log('Iniciando treinamento do modelo com lógica de MDC com', data.length, 'exemplos');
+    console.log('Iniciando treinamento do modelo com lógica de MDC e confiança com', data.length, 'exemplos');
 
     // 1. Validar e limpar dados
     const cleanedData = this.validateAndCleanTrainingData(data);
@@ -483,8 +470,8 @@ class RealApiService {
       referenceColorGroups[key].push(item);
     });
 
-    // 3. Aprender o MDC (camadas) para cada grupo
-    const learnedLayers: Record<string, number> = {};
+    // 3. Aprender padrões (MDC, confiança, etc.) para cada grupo
+    const learnedPatterns: Record<string, any> = {};
     const allLayers: number[] = [];
     Object.keys(referenceColorGroups).forEach(key => {
       const groupItems = referenceColorGroups[key];
@@ -492,13 +479,24 @@ class RealApiService {
 
       if (optimizedQuantities.length > 0) {
         const mdc = this.gcdMultiple(optimizedQuantities);
-        // Usar um valor padrão se o MDC for muito baixo (ex: 1)
-        learnedLayers[key] = mdc > 1 ? mdc : this.detectLayers(optimizedQuantities[0]);
-        allLayers.push(learnedLayers[key]);
+        const bestLayer = mdc > 1 ? mdc : this.detectLayers(optimizedQuantities[0]);
+        allLayers.push(bestLayer);
+
+        // Calcular variabilidade e confiança
+        const variance = this.calculateVariance(optimizedQuantities);
+        const normalizedVariance = variance / (Math.max(...optimizedQuantities) || 1);
+        const confidence = (1 - normalizedVariance) * (1 - 1 / (groupItems.length + 1));
+
+        learnedPatterns[key] = {
+          mdc: bestLayer,
+          confidence: parseFloat(confidence.toFixed(2)),
+          variance: parseFloat(variance.toFixed(2)),
+          samples: groupItems.length,
+        };
       }
     });
     
-    console.log('MDCs (camadas) aprendidos por grupo:', learnedLayers);
+    console.log('Padrões aprendidos por grupo:', learnedPatterns);
 
     // 4. Determinar um fallback global (a camada mais comum)
     const layerFrequencies: Record<number, number> = {};
@@ -512,13 +510,13 @@ class RealApiService {
 
     console.log('Fallback de camada global determinado:', globalDefaultLayer);
 
-    // 5. Retornar os pesos do modelo simplificado
+    // 5. Retornar os pesos do modelo aprimorado
     return {
-      learnedLayers,
+      learnedPatterns,
       globalDefaultLayer,
       sample_size: cleanedData.length,
       trained_at: new Date().toISOString(),
-      version: 'v4.0-mdc-based',
+      version: 'v5.0-confidence-based',
     };
   }
 
@@ -1018,17 +1016,18 @@ class RealApiService {
     
     return numerator / Math.sqrt(xVariance * yVariance);
   }
+
+  private calculateVariance(values: number[]): number {
+    if (values.length < 2) return 0;
+    const mean = values.reduce((sum, val) => sum + val, 0) / values.length;
+    const squaredDiffs = values.map(val => Math.pow(val - mean, 2));
+    return squaredDiffs.reduce((sum, val) => sum + val, 0) / (values.length - 1); // Sample variance
+  }
   
   private analyzeTemporalPatterns(data: any[]) {
     // Por enquanto, retornar null pois não temos timestamps nos dados
     // Em futuras versões, analisar padrões temporais se houver dados de data
     return null;
-  }
-  
-  private calculateVariance(values: number[]) {
-    const mean = values.reduce((sum, val) => sum + val, 0) / values.length;
-    const squaredDiffs = values.map(val => Math.pow(val - mean, 2));
-    return squaredDiffs.reduce((sum, val) => sum + val, 0) / values.length;
   }
 
   async getTrainingHistory(): Promise<TrainingHistoryEntry[]> {
