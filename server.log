@@ -2,3 +2,4 @@
 > rest-express@1.0.0 dev
 > NODE_ENV=development npx tsx server/index.ts
 
+10:44:59 PM [express] serving on port 5000
