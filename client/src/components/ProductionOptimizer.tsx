@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Upload, Play, Save, RotateCcw, Settings, FileText, Lightbulb, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Upload, Play, RotateCcw, Settings, FileText, CheckCircle, AlertTriangle } from 'lucide-react';
 import { realApiService } from '../services/realApiService';
 import { ProductionItem } from '../types';
 import * as XLSX from 'xlsx';
@@ -78,31 +78,6 @@ export const ProductionOptimizer: React.FC = () => {
     }
   };
 
-  const handleSave = () => {
-    if (optimizedItems.length === 0) {
-      setError('Nenhum dado otimizado para salvar.');
-      return;
-    }
-    try {
-      const wsData = optimizedItems.map(item => ({
-        'Referência': item.referencia,
-        'Tamanho': item.tamanho,
-        'Cor': item.cor,
-        'Quantidade Original': item.qtd,
-        'Quantidade Otimizada': item.qtd_otimizada,
-        'Diferença': item.diferenca
-      }));
-      const ws = XLSX.utils.json_to_sheet(wsData);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Dados Otimizados');
-      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-      XLSX.writeFile(wb, `producao_otimizada_${timestamp}.xlsx`);
-      setSuccess('Arquivo salvo com sucesso!');
-    } catch (err) {
-      setError('Erro ao salvar arquivo: ' + (err as Error).message);
-    }
-  };
-
   const handleReset = () => {
     setItems([]);
     setOptimizedItems([]);
@@ -110,26 +85,6 @@ export const ProductionOptimizer: React.FC = () => {
     setError(null);
     setSuccess(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const loadSampleData = () => {
-    const sampleItems: ProductionItem[] = [
-      { id: '1', referencia: 'CAM001', cor: 'Azul Marinho', tamanho: 'P', qtd: 47, qtd_otimizada: 0, diferenca: 0, editavel: true },
-      { id: '2', referencia: 'CAM001', cor: 'Azul Marinho', tamanho: 'M', qtd: 163, qtd_otimizada: 0, diferenca: 0, editavel: true },
-      { id: '3', referencia: 'CAM001', cor: 'Azul Marinho', tamanho: 'G', qtd: 122, qtd_otimizada: 0, diferenca: 0, editavel: true },
-      { id: '4', referencia: 'CAM001', cor: 'Azul Marinho', tamanho: 'GG', qtd: 38, qtd_otimizada: 0, diferenca: 0, editavel: true },
-      { id: '5', referencia: 'CAM001', cor: 'Branco', tamanho: 'P', qtd: 23, qtd_otimizada: 0, diferenca: 0, editavel: true },
-      { id: '6', referencia: 'CAM001', cor: 'Branco', tamanho: 'M', qtd: 89, qtd_otimizada: 0, diferenca: 0, editavel: true },
-      { id: '7', referencia: 'CAM001', cor: 'Branco', tamanho: 'G', qtd: 67, qtd_otimizada: 0, diferenca: 0, editavel: true },
-      { id: '8', referencia: 'CAM001', cor: 'Branco', tamanho: 'GG', qtd: 19, qtd_otimizada: 0, diferenca: 0, editavel: true },
-      { id: '9', referencia: 'VEST002', cor: 'Preto', tamanho: 'M', qtd: 234, qtd_otimizada: 0, diferenca: 0, editavel: true },
-      { id: '10', referencia: 'VEST002', cor: 'Preto', tamanho: 'G', qtd: 156, qtd_otimizada: 0, diferenca: 0, editavel: true }
-    ];
-    setItems(sampleItems);
-    setOptimizedItems([]);
-    setOptimizationDetails(null);
-    setError(null);
-    setSuccess('Exemplo de dados de enfesto carregado!');
   };
 
   return (
@@ -152,14 +107,18 @@ export const ProductionOptimizer: React.FC = () => {
               disabled={isOptimizing}
             />
             <div className="flex flex-wrap gap-3 pt-4">
-              <button onClick={() => fileInputRef.current?.click()} className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50" disabled={isOptimizing}><Upload className="h-5 w-5 mr-2" />Upload</button>
+              {items.length === 0 ? (
+                <button onClick={() => fileInputRef.current?.click()} className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50" disabled={isOptimizing}>
+                  <Upload className="h-5 w-5 mr-2" />
+                  Carregar Arquivo
+                </button>
+              ) : (
+                <button onClick={handleOptimize} disabled={isOptimizing} className="flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50">
+                  {isOptimizing ? <><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2" />Otimizando...</> : <><Play className="h-5 w-5 mr-2" />Otimizar</>}
+                </button>
+              )}
               <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".xlsx,.xls" className="hidden" />
-              <button onClick={handleOptimize} disabled={items.length === 0 || isOptimizing} className="flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50">
-                {isOptimizing ? <><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2" />Otimizando...</> : <><Play className="h-5 w-5 mr-2" />Otimizar</>}
-              </button>
-              <button onClick={handleSave} disabled={optimizedItems.length === 0} className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:opacity-50"><Save className="h-5 w-5 mr-2" />Salvar</button>
               <button onClick={handleReset} className="flex items-center px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"><RotateCcw className="h-5 w-5 mr-2" />Resetar</button>
-              <button onClick={loadSampleData} className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"><Lightbulb className="h-5 w-5 mr-2" />Exemplo</button>
             </div>
           </div>
           <div className="bg-muted p-4 rounded-lg">
