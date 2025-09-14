@@ -740,8 +740,8 @@ class RealApiService {
         item.referencia && 
         item.cor && 
         item.tamanho && 
-        typeof item.qtd !== 'undefined' && 
-        typeof item.qtd_otimizada !== 'undefined';
+        typeof item.qtd !== 'undefined' && item.qtd !== null &&
+        typeof item.qtd_otimizada !== 'undefined' && item.qtd_otimizada !== null;
       
       if (!hasRequiredFields) {
         console.log('Item rejeitado por campos faltantes:', item);
@@ -753,7 +753,7 @@ class RealApiService {
       const qtdOtimizada = typeof item.qtd_otimizada === 'number' ? 
         item.qtd_otimizada : parseFloat(item.qtd_otimizada);
       
-      const isValid = !isNaN(qtd) && !isNaN(qtdOtimizada) && qtd > 0 && qtdOtimizada > 0;
+      const isValid = !isNaN(qtd) && !isNaN(qtdOtimizada) && qtd >= 0 && qtdOtimizada >= 0;
       if (!isValid) {
         console.log('Item rejeitado por números inválidos:', { qtd, qtdOtimizada });
       }
