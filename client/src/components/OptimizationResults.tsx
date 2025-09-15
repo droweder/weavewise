@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ProductionItem } from '../types';
+import { ProductionItem } from '../types/index';
 import { Save, X, Edit, Cpu, BookOpen, ShieldCheck } from 'lucide-react';
 
 interface OptimizationResultsProps {

@@ -3,7 +3,7 @@ import { FileUpload } from './FileUpload';
 import { OptimizationResults } from './OptimizationResults';
 import { validateExcelData, parseExcelToProductionItems } from '../utils/excelValidator';
 import { apiService } from '../services/api';
-import { ProductionItem, OptimizationResult } from '../types';
+import { ProductionItem, OptimizationResult } from '../types/index';
 import { Settings, Play, Download } from 'lucide-react';
 
 export const OptimizationWorkflow: React.FC = () => {
