@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Upload, Play, RotateCcw, Settings, FileText, CheckCircle, AlertTriangle } from 'lucide-react';
 import { realApiService } from '../services/realApiService';
-import { ProductionItem } from '../types';
+import { ProductionItem } from '../types/index';
 import * as XLSX from 'xlsx';
 import { OptimizationResults } from './OptimizationResults';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';

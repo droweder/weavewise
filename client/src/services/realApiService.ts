@@ -1,5 +1,5 @@
 import { supabase } from '../utils/supabaseClient';
-import { ProductionItem, TrainingHistoryEntry, OptimizationLog } from '../types';
+import { ProductionItem, TrainingHistoryEntry, OptimizationLog } from '../types/index';
 import * as XLSX from 'xlsx';
 
 // Serviço real de API com integração com Supabase

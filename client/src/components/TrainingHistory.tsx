@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { realApiService } from '../services/realApiService';
-import { TrainingHistoryEntry, OptimizationLog } from '../types';
+import { TrainingHistoryEntry, OptimizationLog } from '../types/index';
 import { FileUpload } from './FileUpload';
 import { ModelMetrics } from './ModelMetrics';
 import { TrainingDataViewer } from './TrainingDataViewer';
