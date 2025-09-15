@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Upload, Play, RotateCcw, Settings, FileText, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Upload, Play, Save, RotateCcw, Settings, FileText, CheckCircle, AlertTriangle } from 'lucide-react';
 import { realApiService } from '../services/realApiService';
 import { ProductionItem } from '../types/index';
 import * as XLSX from 'xlsx';
@@ -78,6 +78,31 @@ export const ProductionOptimizer: React.FC = () => {
     }
   };
 
+  const handleSave = () => {
+    if (optimizedItems.length === 0) {
+      setError('Nenhum dado otimizado para salvar.');
+      return;
+    }
+    try {
+      const wsData = optimizedItems.map(item => ({
+        'Referência': item.referencia,
+        'Tamanho': item.tamanho,
+        'Cor': item.cor,
+        'Quantidade Original': item.qtd,
+        'Quantidade Otimizada': item.qtd_otimizada,
+        'Diferença': item.diferenca
+      }));
+      const ws = XLSX.utils.json_to_sheet(wsData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Dados Otimizados');
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+      XLSX.writeFile(wb, `producao_otimizada_${timestamp}.xlsx`);
+      setSuccess('Arquivo salvo com sucesso!');
+    } catch (err) {
+      setError('Erro ao salvar arquivo: ' + (err as Error).message);
+    }
+  };
+
   const handleReset = () => {
     setItems([]);
     setOptimizedItems([]);
@@ -142,8 +167,18 @@ export const ProductionOptimizer: React.FC = () => {
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center"><FileText className="h-6 w-6 mr-2" />Dados de Produção</CardTitle>
-          <CardDescription>Visualize os dados originais ou os resultados da otimização.</CardDescription>
+          <div className="flex justify-between items-center">
+            <div>
+              <CardTitle className="flex items-center"><FileText className="h-6 w-6 mr-2" />Dados de Produção</CardTitle>
+              <CardDescription>Visualize os dados originais ou os resultados da otimização.</CardDescription>
+            </div>
+            {optimizedItems.length > 0 && (
+              <button onClick={handleSave} className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 text-sm">
+                <Save className="h-4 w-4 mr-2" />
+                Download
+              </button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {optimizedItems.length > 0 ? (
