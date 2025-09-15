@@ -104,12 +104,20 @@ export const OptimizationResults: React.FC<OptimizationResultsProps> = ({
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Qtd Original</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Qtd Otimizada</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Diferença</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Camadas</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Repetições</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Método</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Ações</th>
             </tr>
           </thead>
           <tbody className="bg-card divide-y divide-border">
-            {items.map((item) => (
+            {items.map((item) => {
+              const key = `${item.referencia}-${item.cor}`;
+              const details = optimizationDetails?.[key];
+              const camadas = details?.bestStackHeight || 0;
+              const repeticoes = camadas > 0 ? Math.round((item.qtd_otimizada || 0) / camadas) : 0;
+
+              return (
               <tr key={item.id} className="hover:bg-muted/50">
                 <td className="px-4 py-4 whitespace-nowrap text-sm font-medium">{item.referencia}</td>
                 <td className="px-4 py-4 whitespace-nowrap text-sm text-muted-foreground">{item.tamanho}</td>
@@ -134,6 +142,8 @@ export const OptimizationResults: React.FC<OptimizationResultsProps> = ({
                     {item.diferenca > 0 ? `+${item.diferenca}` : item.diferenca}
                   </span>
                 </td>
+                <td className="px-4 py-4 whitespace-nowrap text-sm font-semibold text-blue-600">{camadas}</td>
+                <td className="px-4 py-4 whitespace-nowrap text-sm font-semibold text-purple-600">{repeticoes}</td>
                 <td className="px-4 py-4 whitespace-nowrap text-sm">{getMethodTag(item)}</td>
                 <td className="px-4 py-4 whitespace-nowrap text-sm">
                   {editingItemId === item.id ? (
@@ -146,7 +156,8 @@ export const OptimizationResults: React.FC<OptimizationResultsProps> = ({
                   )}
                 </td>
               </tr>
-            ))}
+              )
+            })}
           </tbody>
         </table>
       </div>
