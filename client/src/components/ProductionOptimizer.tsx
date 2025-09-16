@@ -21,6 +21,17 @@ export const ProductionOptimizer: React.FC = () => {
     if (!file) return;
 
     const reader = new FileReader();
+
+    reader.onerror = () => {
+      setError(`Erro ao ler o arquivo: ${reader.error?.message || 'Erro desconhecido'}`);
+      setSuccess(null);
+      setItems([]);
+      setOptimizedItems([]);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    };
+
     reader.onload = (e) => {
       try {
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
