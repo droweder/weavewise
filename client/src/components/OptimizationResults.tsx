@@ -134,12 +134,12 @@ export const OptimizationResults: React.FC<OptimizationResultsProps> = ({
                       min="0"
                     />
                   ) : (
-                    <span className={item.diferenca !== 0 ? 'font-semibold' : ''}>{item.qtd_otimizada}</span>
+                    <span className={(item.diferenca || 0) !== 0 ? 'font-semibold' : ''}>{item.qtd_otimizada}</span>
                   )}
                 </td>
                 <td className="px-4 py-4 whitespace-nowrap text-sm">
-                  <span className={item.diferenca > 0 ? 'text-green-600 font-semibold' : item.diferenca < 0 ? 'text-destructive font-semibold' : 'text-muted-foreground'}>
-                    {item.diferenca > 0 ? `+${item.diferenca}` : item.diferenca}
+                  <span className={(item.diferenca || 0) > 0 ? 'text-green-600 font-semibold' : (item.diferenca || 0) < 0 ? 'text-destructive font-semibold' : 'text-muted-foreground'}>
+                    {(item.diferenca || 0) > 0 ? `+${item.diferenca}` : item.diferenca}
                   </span>
                 </td>
                 <td className="px-4 py-4 whitespace-nowrap text-sm font-semibold text-blue-600">{camadas}</td>

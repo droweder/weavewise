@@ -25,30 +25,85 @@ export const ProductionOptimizer: React.FC = () => {
       try {
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
         const workbook = XLSX.read(data, { type: 'array' });
-        
+
         const sheetName = workbook.SheetNames.find(name => name.toLowerCase().includes('dados')) || workbook.SheetNames[0];
-        if (!sheetName) throw new Error('Aba "Dados" não encontrada no arquivo.');
-        
+        if (!sheetName) {
+          throw new Error('Aba "Dados" não encontrada no arquivo.');
+        }
+
         const worksheet = workbook.Sheets[sheetName];
-        const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet);
+        const dataAsArray: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+        if (dataAsArray.length < 2) {
+          throw new Error('A planilha precisa ter um cabeçalho e pelo menos uma linha de dados.');
+        }
+
+        const header = dataAsArray[0].map(h => String(h).trim().toLowerCase());
+        const requiredHeaders = ['referência', 'cor', 'tamanho', 'qtd'];
         
-        const productionItems: ProductionItem[] = jsonData.map((row, index) => ({
-          id: `${index + 1}`,
-          referencia: String(row.Referência || row.referencia || ''),
-          cor: String(row.Cor || row.cor || ''),
-          tamanho: String(row.Tamanho || row.tamanho || ''),
-          qtd: typeof row.Qtd === 'number' ? row.Qtd : parseFloat(String(row.Qtd)) || 0,
-          qtd_otimizada: 0,
-          diferenca: 0,
-          editavel: true
-        }));
+        const refIndex = header.indexOf('referência');
+        const corIndex = header.indexOf('cor');
+        const tamanhoIndex = header.indexOf('tamanho');
+        const qtdIndex = header.indexOf('qtd');
+
+        if (refIndex === -1 || corIndex === -1 || tamanhoIndex === -1 || qtdIndex === -1) {
+          const missing = requiredHeaders.filter(h => !header.includes(h));
+          throw new Error(`Cabeçalhos não encontrados: ${missing.join(', ')}. Verifique se a planilha contém os cabeçalhos 'Referência', 'Cor', 'Tamanho' e 'Qtd'.`);
+        }
+
+        const productionItems: ProductionItem[] = [];
+        for (let i = 1; i < dataAsArray.length; i++) {
+          const row = dataAsArray[i];
+
+          if (!row || row.length === 0 || row.every(cell => cell === null || cell === '')) {
+            continue; // Pular linhas vazias
+          }
+
+          const referencia = row[refIndex];
+          const cor = row[corIndex];
+          const tamanho = row[tamanhoIndex];
+          const qtd = row[qtdIndex];
+
+          if (!referencia || !cor || !tamanho || !qtd) {
+            throw new Error(`Linha ${i + 1}: Todos os campos (Referência, Cor, Tamanho, Qtd) são obrigatórios.`);
+          }
+
+          const parsedQtd = parseFloat(String(qtd));
+          if (isNaN(parsedQtd) || parsedQtd <= 0) {
+            throw new Error(`Linha ${i + 1}: A quantidade ('Qtd') deve ser um número maior que zero.`);
+          }
+
+          productionItems.push({
+            id: `${i}`,
+            referencia: String(referencia),
+            cor: String(cor),
+            tamanho: String(tamanho),
+            qtd: parsedQtd,
+            qtd_otimizada: 0,
+            diferenca: 0,
+            editavel: true
+          });
+        }
         
+        if (productionItems.length === 0) {
+            throw new Error("Nenhum item válido encontrado na planilha. Verifique o conteúdo do arquivo.");
+        }
+
         setItems(productionItems);
         setOptimizedItems([]);
         setError(null);
-        setSuccess(`${productionItems.length} itens carregados do arquivo.`);
+        setSuccess(`${productionItems.length} itens carregados com sucesso do arquivo.`);
       } catch (err) {
-        setError('Erro ao processar arquivo: ' + (err as Error).message);
+        const errorMessage = (err as Error).message;
+        setError(`Erro ao processar arquivo: ${errorMessage}`);
+        setSuccess(null);
+        setItems([]);
+        setOptimizedItems([]);
+      } finally {
+        // Limpar o valor do input de arquivo para permitir o re-upload do mesmo arquivo
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
       }
     };
     reader.readAsArrayBuffer(file);
