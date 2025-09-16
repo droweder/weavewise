@@ -60,6 +60,9 @@ export const ProductionOptimizer: React.FC = () => {
           });
         }
         if (productionItems.length === 0) throw new Error("Nenhum item válido encontrado na planilha.");
+        if (productionItems.length > 5000) {
+          throw new Error("O arquivo é muito grande para ser processado no navegador. Por favor, use um arquivo com menos de 5000 linhas.");
+        }
         setFile(selectedFile);
         setItems(productionItems);
         setStep('configure');
