@@ -178,30 +178,28 @@ class RealApiService {
   }
 
   private findBestStackHeight(quantities: number[], tolerance: number): number {
-    const originalGcd = this.gcdMultiple(quantities.filter(q => q > 0));
-    let bestHeight = originalGcd > 1 ? originalGcd : 1;
+    const gcdHeight = this.gcdMultiple(quantities.filter(q => q > 0));
 
-    const candidateHeights = [12, 18, 24, 30, 36, 42, 48, 54, 60, 72, 84, 96, 108, 120, 144];
-    const uniqueCandidateHeights = [...new Set(candidateHeights)].sort((a,b) => b-a);
+    // Se o MDC for 1 ou menos, não há um padrão de agrupamento natural.
+    if (gcdHeight <= 1) {
+      return 1;
+    }
 
-    for (const height of uniqueCandidateHeights) {
-      if (height <= bestHeight) continue;
-      let isHeightValid = true;
-      for (const qtd of quantities) {
-        const adjustedQtd = Math.round(qtd / height) * height;
+    // Validar se a altura do MDC respeita a tolerância para todos os itens.
+    let isGcdValid = true;
+    for (const qtd of quantities) {
+      if (qtd > 0) {
+        const adjustedQtd = Math.round(qtd / gcdHeight) * gcdHeight;
         const difference = Math.abs(adjustedQtd - qtd);
-        // A verificação de tolerância só se aplica a quantidades > 0
-        if (qtd > 0 && (difference / qtd) > (tolerance / 100)) {
-          isHeightValid = false;
+        if ((difference / qtd) * 100 > tolerance) {
+          isGcdValid = false;
           break;
         }
       }
-      if (isHeightValid) {
-          bestHeight = height;
-          return bestHeight;
-      }
     }
-    return bestHeight;
+
+    // Retornar a altura do MDC apenas se for válida, caso contrário, não otimizar.
+    return isGcdValid ? gcdHeight : 1;
   }
 
   // Calcular MDC (Máximo Divisor Comum) entre dois números
