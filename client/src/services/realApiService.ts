@@ -46,44 +46,47 @@ class RealApiService {
 
     let optimizedItems: ProductionItem[] = [];
     const optimizationDetails: Record<string, any> = {};
-    const CONFIDENCE_THRESHOLD = 0.75;
+
+    const globalStackHeights = modelWeights.globalStackHeights || [36];
 
     for (const key in groups) {
       const groupItems = groups[key];
-      let bestStackHeight = modelWeights.globalDefaultLayer || 36;
-      let methodUsed = 'Padrão Global';
+      let bestStackHeight = 1;
+      let methodUsed = 'N/A';
+      let modelHeightFound = false;
 
-      const pattern = modelWeights.learnedPatterns?.[key];
-      if (pattern && pattern.confidence >= CONFIDENCE_THRESHOLD) {
-        bestStackHeight = pattern.mdc;
-        methodUsed = `Modelo (Confiança: ${pattern.confidence * 100}%)`;
-      } else if (pattern) {
-        bestStackHeight = pattern.mdc;
-        methodUsed = `Modelo (Baixa Confiança: ${pattern.confidence * 100}%)`;
-      }
+      // 1. Tentar aplicar as alturas de enfesto globais aprendidas
+      for (const height of globalStackHeights) {
+        let isHeightValid = true;
+        for (const item of groupItems) {
+          if (item.qtd === 0) continue;
+          const adjustedQtd = this.adjustToLayers(item.qtd, height);
+          const difference = Math.abs(adjustedQtd - item.qtd);
+          if ((difference / item.qtd) * 100 > tolerance) {
+            isHeightValid = false;
+            break;
+          }
+        }
 
-      // First, try to apply the determined stack height (from model or fallback)
-      let isHeightValid = true;
-      for (const item of groupItems) {
-        if (item.qtd === 0) continue;
-        const adjustedQtd = this.adjustToLayers(item.qtd, bestStackHeight);
-        const difference = Math.abs(adjustedQtd - item.qtd);
-        if ((difference / item.qtd) * 100 > tolerance) {
-          isHeightValid = false;
-          break;
+        if (isHeightValid) {
+          bestStackHeight = height;
+          methodUsed = 'Modelo';
+          modelHeightFound = true;
+          break; // Encontrou a melhor altura do modelo, pode parar
         }
       }
 
-      // If the model's suggestion violates tolerance, use the simple rule-based method
-      if (!isHeightValid) {
+      // 2. Se nenhuma altura do modelo for válida, usar a regra de tolerância
+      if (!modelHeightFound) {
         bestStackHeight = this.findBestStackHeight(groupItems.map(i => i.qtd), tolerance);
         methodUsed = 'Regra de Tolerância';
       }
 
-      // Apply the final chosen stack height
+      // 3. Aplicar a altura de enfesto final escolhida
       const optimizedGroup = groupItems.map(item => {
         if (bestStackHeight > 1) {
           const optimizedQtd = this.adjustToLayers(item.qtd, bestStackHeight);
+          // Garantir que a otimização não zere uma quantidade que não era zero
           const finalOptimizedQtd = (item.qtd > 0 && optimizedQtd === 0) ? bestStackHeight : optimizedQtd;
           return {
             ...item,
@@ -91,6 +94,7 @@ class RealApiService {
             diferenca: finalOptimizedQtd - item.qtd,
           };
         } else {
+          // Se a melhor altura for 1, não há otimização
           return { ...item, qtd_otimizada: item.qtd, diferenca: 0 };
         }
       });
@@ -450,7 +454,7 @@ class RealApiService {
   }
 
   private async trainMLModel(data: any[]): Promise<any> {
-    console.log('Iniciando treinamento do modelo com lógica de MDC e confiança com', data.length, 'exemplos');
+    console.log('Iniciando treinamento do modelo com lógica de padrão global com', data.length, 'exemplos');
 
     // 1. Validar e limpar dados
     const cleanedData = this.validateAndCleanTrainingData(data);
@@ -460,63 +464,45 @@ class RealApiService {
       throw new Error('Nenhum dado válido encontrado para treinamento.');
     }
 
-    // 2. Agrupar dados por Referência e Cor
-    const referenceColorGroups: Record<string, any[]> = {};
-    cleanedData.forEach((item: any) => {
-      const key = `${item.referencia}-${item.cor}`;
-      if (!referenceColorGroups[key]) {
-        referenceColorGroups[key] = [];
-      }
-      referenceColorGroups[key].push(item);
-    });
+    // 2. Coletar todas as quantidades otimizadas de todo o dataset
+    const allOptimizedQuantities = cleanedData.map(item => item.qtd_otimizada).filter(q => q > 0);
 
-    // 3. Aprender padrões (MDC, confiança, etc.) para cada grupo
-    const learnedPatterns: Record<string, any> = {};
-    const allLayers: number[] = [];
-    Object.keys(referenceColorGroups).forEach(key => {
-      const groupItems = referenceColorGroups[key];
-      const optimizedQuantities = groupItems.map(item => item.qtd_otimizada);
+    if (allOptimizedQuantities.length === 0) {
+        throw new Error('Nenhuma quantidade otimizada válida encontrada nos dados de treinamento.');
+    }
 
-      if (optimizedQuantities.length > 0) {
-        const mdc = this.gcdMultiple(optimizedQuantities);
-        const bestLayer = mdc > 1 ? mdc : this.detectLayers(optimizedQuantities[0]);
-        allLayers.push(bestLayer);
+    // 3. Identificar as "alturas de enfesto" mais comuns e eficazes globalmente
+    const candidateHeights = [12, 18, 24, 30, 36, 42, 48, 54, 60, 72, 84, 96, 108, 120, 144];
+    const heightFrequencies: Record<number, number> = {};
 
-        // Calcular variabilidade e confiança
-        const variance = this.calculateVariance(optimizedQuantities);
-        const normalizedVariance = variance / (Math.max(...optimizedQuantities) || 1);
-        const confidence = (1 - normalizedVariance) * (1 - 1 / (groupItems.length + 1));
-
-        learnedPatterns[key] = {
-          mdc: bestLayer,
-          confidence: parseFloat(confidence.toFixed(2)),
-          variance: parseFloat(variance.toFixed(2)),
-          samples: groupItems.length,
-        };
-      }
+    // Contar a frequência de cada altura candidata como divisor das quantidades otimizadas
+    allOptimizedQuantities.forEach(qtd => {
+        for (const height of candidateHeights) {
+            // Consideramos um divisor se a "sobra" for pequena (ex: menos de 5%)
+            if ((qtd % height) < (height * 0.05)) {
+                heightFrequencies[height] = (heightFrequencies[height] || 0) + 1;
+            }
+        }
     });
     
-    console.log('Padrões aprendidos por grupo:', learnedPatterns);
+    // 4. Ordenar as alturas pela sua frequência para determinar as mais eficazes
+    const globalStackHeights = Object.entries(heightFrequencies)
+      .sort(([, countA], [, countB]) => countB - countA)
+      .map(([height]) => parseInt(height));
 
-    // 4. Determinar um fallback global (a camada mais comum)
-    const layerFrequencies: Record<number, number> = {};
-    allLayers.forEach(layer => {
-      layerFrequencies[layer] = (layerFrequencies[layer] || 0) + 1;
-    });
-    
-    const globalDefaultLayer = Object.keys(layerFrequencies).length > 0
-      ? parseInt(Object.entries(layerFrequencies).sort((a, b) => b[1] - a[1])[0][0])
-      : 36; // Default fallback se nada for aprendido
+    // Garantir que temos um fallback caso nenhuma altura seja encontrada
+    if (globalStackHeights.length === 0) {
+        globalStackHeights.push(36); // Fallback padrão da indústria
+    }
 
-    console.log('Fallback de camada global determinado:', globalDefaultLayer);
+    console.log('Alturas de enfesto globais aprendidas (ordenadas por eficácia):', globalStackHeights);
 
-    // 5. Retornar os pesos do modelo aprimorado
+    // 5. Retornar os novos pesos do modelo com o padrão global
     return {
-      learnedPatterns,
-      globalDefaultLayer,
+      globalStackHeights,
       sample_size: cleanedData.length,
       trained_at: new Date().toISOString(),
-      version: 'v5.0-confidence-based',
+      version: 'v6.0-global-pattern',
     };
   }
 
