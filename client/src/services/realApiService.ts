@@ -59,10 +59,10 @@ class RealApiService {
       for (const height of globalStackHeights) {
         let isHeightValid = true;
         for (const item of groupItems) {
-          if (item.qtd === 0) continue;
           const adjustedQtd = this.adjustToLayers(item.qtd, height);
           const difference = Math.abs(adjustedQtd - item.qtd);
-          if ((difference / item.qtd) * 100 > tolerance) {
+          // A verificação de tolerância só se aplica a itens com quantidade inicial > 0
+          if (item.qtd > 0 && (difference / item.qtd) * 100 > tolerance) {
             isHeightValid = false;
             break;
           }
@@ -188,10 +188,10 @@ class RealApiService {
       if (height <= bestHeight) continue;
       let isHeightValid = true;
       for (const qtd of quantities) {
-        if (qtd === 0) continue;
         const adjustedQtd = Math.round(qtd / height) * height;
         const difference = Math.abs(adjustedQtd - qtd);
-        if ((difference / qtd) > (tolerance / 100)) {
+        // A verificação de tolerância só se aplica a quantidades > 0
+        if (qtd > 0 && (difference / qtd) > (tolerance / 100)) {
           isHeightValid = false;
           break;
         }
