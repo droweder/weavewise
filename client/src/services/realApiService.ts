@@ -86,8 +86,17 @@ class RealApiService {
       const optimizedGroup = groupItems.map(item => {
         if (bestStackHeight > 1) {
           const optimizedQtd = this.adjustToLayers(item.qtd, bestStackHeight);
-          // Garantir que a otimização não zere uma quantidade que não era zero
-          const finalOptimizedQtd = (item.qtd > 0 && optimizedQtd === 0) ? bestStackHeight : optimizedQtd;
+
+          let finalOptimizedQtd;
+          if (item.qtd === 0) {
+            // Se a quantidade original é 0, a otimizada é a altura do enfesto.
+            finalOptimizedQtd = bestStackHeight;
+          } else {
+            // Se a quantidade original não é 0, mas a otimização a arredondou para 0,
+            // então a otimizada deve ser a altura do enfesto para evitar zerar o item.
+            finalOptimizedQtd = optimizedQtd === 0 ? bestStackHeight : optimizedQtd;
+          }
+
           return {
             ...item,
             qtd_otimizada: finalOptimizedQtd,
@@ -134,13 +143,24 @@ class RealApiService {
         const optimizedGroup = groupItems.map(item => {
           if (bestStackHeight > 1) {
             const optimizedQtd = Math.round(item.qtd / bestStackHeight) * bestStackHeight;
-            const finalOptimizedQtd = (item.qtd > 0 && optimizedQtd === 0) ? bestStackHeight : optimizedQtd;
+
+            let finalOptimizedQtd;
+            if (item.qtd === 0) {
+              // Se a quantidade original é 0, a otimizada é a altura do enfesto.
+              finalOptimizedQtd = bestStackHeight;
+            } else {
+              // Se a quantidade original não é 0, mas a otimização a arredondou para 0,
+              // então a otimizada deve ser a altura do enfesto para evitar zerar o item.
+              finalOptimizedQtd = optimizedQtd === 0 ? bestStackHeight : optimizedQtd;
+            }
+
             return {
               ...item,
               qtd_otimizada: finalOptimizedQtd,
               diferenca: finalOptimizedQtd - item.qtd,
             };
           } else {
+            // Se a melhor altura for 1, não há otimização
             return { ...item, qtd_otimizada: item.qtd, diferenca: 0 };
           }
         });
