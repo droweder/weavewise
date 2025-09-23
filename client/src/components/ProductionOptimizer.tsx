@@ -51,9 +51,9 @@ export const ProductionOptimizer: React.FC = () => {
           const row = dataAsArray[i];
           if (!row || row.length === 0 || row.every(cell => cell === null || cell === '')) continue;
           const [referencia, cor, tamanho, qtd] = [row[refIndex], row[corIndex], row[tamanhoIndex], row[qtdIndex]];
-          if (!referencia || !cor || !tamanho || !qtd) throw new Error(`Linha ${i + 1}: Todos os campos são obrigatórios.`);
+          if (!referencia || !cor || !tamanho || typeof qtd === 'undefined' || qtd === null) throw new Error(`Linha ${i + 1}: Todos os campos são obrigatórios.`);
           const parsedQtd = parseFloat(String(qtd));
-          if (isNaN(parsedQtd) || parsedQtd <= 0) throw new Error(`Linha ${i + 1}: A quantidade ('Qtd') deve ser um número maior que zero.`);
+          if (isNaN(parsedQtd) || parsedQtd < 0) throw new Error(`Linha ${i + 1}: A quantidade ('Qtd') deve ser um número positivo ou zero.`);
           productionItems.push({
             id: `${i}`, referencia: String(referencia), cor: String(cor), tamanho: String(tamanho),
             qtd: parsedQtd, qtd_otimizada: 0, diferenca: 0, editavel: true
@@ -68,6 +68,8 @@ export const ProductionOptimizer: React.FC = () => {
         setStep('configure');
       } catch (err) {
         setError(`Erro ao processar arquivo: ${(err as Error).message}`);
+        setFile(null);
+        setItems([]);
       } finally {
         setIsProcessing(false);
       }
