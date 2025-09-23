@@ -36,6 +36,38 @@ class RealApiService {
     }
   }
 
+  private findBestAdjustment(quantity: number, height: number, tolerance: number): number | null {
+    if (quantity === 0) {
+      return height;
+    }
+    if (height <= 1) {
+      return quantity;
+    }
+
+    const lowerMultiple = Math.floor(quantity / height) * height;
+    const upperMultiple = Math.ceil(quantity / height) * height;
+
+    if (lowerMultiple === quantity) {
+      return quantity;
+    }
+
+    const isLowerValid = ((quantity - lowerMultiple) / quantity) * 100 <= tolerance;
+    const isUpperValid = ((upperMultiple - quantity) / quantity) * 100 <= tolerance;
+
+    if (isLowerValid && isUpperValid) {
+      // User preference: prefer to decrease if both options are valid.
+      return lowerMultiple > 0 ? lowerMultiple : upperMultiple;
+    }
+    if (isLowerValid) {
+      return lowerMultiple;
+    }
+    if (isUpperValid) {
+      return upperMultiple;
+    }
+
+    return null;
+  }
+
   private hybridOptimization(items: ProductionItem[], tolerance: number, modelWeights: any) {
     const groups: Record<string, ProductionItem[]> = {};
     items.forEach(item => {
@@ -47,65 +79,50 @@ class RealApiService {
     let optimizedItems: ProductionItem[] = [];
     const optimizationDetails: Record<string, any> = {};
 
-    const globalStackHeights = modelWeights.globalStackHeights || [36];
+    const globalStackHeights = modelWeights.globalStackHeights || [];
 
     for (const key in groups) {
       const groupItems = groups[key];
       let bestStackHeight = 1;
       let methodUsed = 'N/A';
-      let modelHeightFound = false;
 
-      // 1. Tentar aplicar as alturas de enfesto globais aprendidas
+      // 1. Tentar encontrar a melhor altura de enfesto usando o modelo aprendido
+      let modelHeightFound = false;
       for (const height of globalStackHeights) {
-        let isHeightValid = true;
+        let isHeightValidForAllItems = true;
         for (const item of groupItems) {
-          const adjustedQtd = this.adjustToLayers(item.qtd, height);
-          const difference = Math.abs(adjustedQtd - item.qtd);
-          // A verificação de tolerância só se aplica a itens com quantidade inicial > 0
-          if (item.qtd > 0 && (difference / item.qtd) * 100 > tolerance) {
-            isHeightValid = false;
+          if (this.findBestAdjustment(item.qtd, height, tolerance) === null) {
+            isHeightValidForAllItems = false;
             break;
           }
         }
-
-        if (isHeightValid) {
+        if (isHeightValidForAllItems) {
           bestStackHeight = height;
           methodUsed = 'Modelo';
           modelHeightFound = true;
-          break; // Encontrou a melhor altura do modelo, pode parar
+          break;
         }
       }
 
-      // 2. Se nenhuma altura do modelo for válida, usar a regra de tolerância
+      // 2. Se o modelo não encontrou uma altura válida, usar o fallback (lógica do MDC)
       if (!modelHeightFound) {
-        bestStackHeight = this.findBestStackHeight(groupItems.map(i => i.qtd), tolerance);
-        methodUsed = 'Regra de Tolerância';
+        const fallbackHeight = this.findBestStackHeight(groupItems.map(i => i.qtd), tolerance);
+        if (fallbackHeight > 1) {
+          bestStackHeight = fallbackHeight;
+          methodUsed = 'Regra de Tolerância (MDC)';
+        } else {
+          methodUsed = 'Nenhuma otimização possível';
+        }
       }
 
       // 3. Aplicar a altura de enfesto final escolhida
       const optimizedGroup = groupItems.map(item => {
-        if (bestStackHeight > 1) {
-          const optimizedQtd = this.adjustToLayers(item.qtd, bestStackHeight);
-
-          let finalOptimizedQtd;
-          if (item.qtd === 0) {
-            // Se a quantidade original é 0, a otimizada é a altura do enfesto.
-            finalOptimizedQtd = bestStackHeight;
-          } else {
-            // Se a quantidade original não é 0, mas a otimização a arredondou para 0,
-            // então a otimizada deve ser a altura do enfesto para evitar zerar o item.
-            finalOptimizedQtd = optimizedQtd === 0 ? bestStackHeight : optimizedQtd;
-          }
-
-          return {
-            ...item,
-            qtd_otimizada: finalOptimizedQtd,
-            diferenca: finalOptimizedQtd - item.qtd,
-          };
-        } else {
-          // Se a melhor altura for 1, não há otimização
-          return { ...item, qtd_otimizada: item.qtd, diferenca: 0 };
-        }
+        const finalOptimizedQtd = this.findBestAdjustment(item.qtd, bestStackHeight, tolerance) ?? item.qtd;
+        return {
+          ...item,
+          qtd_otimizada: finalOptimizedQtd,
+          diferenca: finalOptimizedQtd - item.qtd,
+        };
       });
 
       optimizedItems.push(...optimizedGroup);
@@ -180,26 +197,20 @@ class RealApiService {
   private findBestStackHeight(quantities: number[], tolerance: number): number {
     const gcdHeight = this.gcdMultiple(quantities.filter(q => q > 0));
 
-    // Se o MDC for 1 ou menos, não há um padrão de agrupamento natural.
     if (gcdHeight <= 1) {
       return 1;
     }
 
-    // Validar se a altura do MDC respeita a tolerância para todos os itens.
-    let isGcdValid = true;
+    // Validar se a altura do MDC é uma opção válida para todos os itens do grupo
     for (const qtd of quantities) {
-      if (qtd > 0) {
-        const adjustedQtd = Math.round(qtd / gcdHeight) * gcdHeight;
-        const difference = Math.abs(adjustedQtd - qtd);
-        if ((difference / qtd) * 100 > tolerance) {
-          isGcdValid = false;
-          break;
-        }
+      if (this.findBestAdjustment(qtd, gcdHeight, tolerance) === null) {
+        // Se o MDC não for válido para qualquer item, ele não pode ser usado para o grupo.
+        return 1;
       }
     }
 
-    // Retornar a altura do MDC apenas se for válida, caso contrário, não otimizar.
-    return isGcdValid ? gcdHeight : 1;
+    // Se o MDC for válido para todos, ele é a melhor opção de fallback.
+    return gcdHeight;
   }
 
   // Calcular MDC (Máximo Divisor Comum) entre dois números
