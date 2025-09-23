@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { realApiService } from '../services/realApiService';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { AlertCircle } from 'lucide-react';
+import { Icon } from './Icon';
 
 interface AuthProps {
   onAuthSuccess: () => void;
@@ -42,11 +43,7 @@ export const Auth: React.FC<AuthProps> = ({ onAuthSuccess }) => {
   return (
     <div className="min-h-screen bg-background flex flex-col justify-center items-center p-4">
       <div className="flex items-center mb-6">
-        <div className="bg-primary rounded-lg p-2">
-          <div className="bg-background rounded-md p-1">
-            <div className="w-8 h-8 bg-primary rounded"></div>
-          </div>
-        </div>
+        <Icon className="w-12 h-12 text-primary" />
         <h1 className="ml-4 text-3xl font-bold">Weavewise</h1>
       </div>
 

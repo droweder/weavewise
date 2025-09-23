@@ -4,6 +4,7 @@ import { ProductionOptimizer } from './ProductionOptimizer';
 import { TrainingHistory } from './TrainingHistory';
 import { Documentation } from './Documentation';
 import { ModeToggle } from './ThemeToggle';
+import { Icon } from './Icon';
 
 interface LayoutProps {
   onLogout: () => void;
@@ -23,7 +24,10 @@ export const Layout: React.FC<LayoutProps> = ({ onLogout, children }) => {
       <header className="bg-card shadow">
         <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center">
-            <h1 className="text-3xl font-bold text-foreground">Weavewise</h1>
+            <div className="flex items-center">
+              <Icon className="w-8 h-8 text-primary" />
+              <h1 className="ml-4 text-3xl font-bold text-foreground">Weavewise</h1>
+            </div>
             <div className="flex items-center space-x-4">
               <span className="text-sm text-muted-foreground">Sistema de Otimização Têxtil</span>
               <ModeToggle />
